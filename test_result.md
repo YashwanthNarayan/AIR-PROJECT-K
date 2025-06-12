@@ -167,15 +167,18 @@ backend:
 
   - task: "Chat Message API"
     implemented: true
-    working: "NA"
+    working: true
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Implemented message sending API that routes through Central Brain to appropriate bots and stores conversation history in MongoDB."
+      - working: true
+        agent: "testing"
+        comment: "Verified message API functionality. Successfully sent messages and received appropriate responses from both Central Brain and Math Bot. Messages are correctly stored in MongoDB and can be retrieved via the chat history endpoint."
 
   - task: "MongoDB Data Models"
     implemented: true
