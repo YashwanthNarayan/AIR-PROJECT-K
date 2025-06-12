@@ -107,15 +107,18 @@ user_problem_statement: "Build a complete AI-powered educational chatbot named P
 backend:
   - task: "Gemini LLM Integration"
     implemented: true
-    working: "NA"  
+    working: true  
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Implemented emergentintegrations library with Gemini API key integration. Created LlmChat instances for Central Brain and Math Bot."
+      - working: true
+        agent: "testing"
+        comment: "Fixed Gemini API integration by replacing emergentintegrations library with google-genai library. The emergentintegrations library was trying to use OpenAI's API with a Google Gemini API key, which was causing authentication errors. Now properly using Gemini API with the google-genai library."
 
   - task: "Central Brain Chatbot"
     implemented: true
