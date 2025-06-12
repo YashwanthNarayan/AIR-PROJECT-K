@@ -4,15 +4,19 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import asyncio
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
 from datetime import datetime
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+import google.generativeai as genai
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# Configure Gemini API
+genai.configure(api_key=os.environ.get('GEMINI_API_KEY'))
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -59,10 +63,7 @@ class CentralBrainBot:
         
     async def analyze_and_route(self, message: str, session_id: str):
         """Analyze user message and determine which bot should handle it"""
-        chat = LlmChat(
-            api_key=self.api_key,
-            session_id=f"central_brain_{session_id}",
-            system_message="""You are the Central Brain of Project K, an AI educational tutor system. 
+        system_prompt = """You are the Central Brain of Project K, an AI educational tutor system. 
             Your job is to analyze student messages and determine which subject-specific bot should handle them.
             
             Available subjects: Math, Physics (coming soon), Chemistry (coming soon)
@@ -78,11 +79,16 @@ class CentralBrainBot:
             If it's general conversation or non-subject specific, handle it yourself with encouragement.
             
             Always be encouraging and supportive. Remember, you're helping middle and high school students."""
+        
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        chat = model.start_chat(history=[])
+        
+        response = await asyncio.to_thread(
+            chat.send_message,
+            f"System: {system_prompt}\n\nUser: {message}"
         )
         
-        user_message = UserMessage(text=message)
-        response = await chat.send_message(user_message)
-        return response
+        return response.text
 
 class MathBot:
     def __init__(self):
@@ -90,10 +96,7 @@ class MathBot:
         
     async def teach_math(self, message: str, session_id: str):
         """Teach math using Socratic method with fallback to direct explanations"""
-        chat = LlmChat(
-            api_key=self.api_key,
-            session_id=f"math_bot_{session_id}",
-            system_message="""You are the Math Bot of Project K, a specialized AI tutor for middle and high school mathematics.
+        system_prompt = """You are the Math Bot of Project K, a specialized AI tutor for middle and high school mathematics.
 
             Teaching Philosophy:
             1. Use the Socratic method - ask guiding questions and give hints rather than direct answers
@@ -116,11 +119,16 @@ class MathBot:
             - End with a question to check understanding
             
             Remember: You're helping students LEARN, not just getting answers. Make math feel approachable and fun!"""
+        
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        chat = model.start_chat(history=[])
+        
+        response = await asyncio.to_thread(
+            chat.send_message,
+            f"System: {system_prompt}\n\nUser: {message}"
         )
         
-        user_message = UserMessage(text=message)
-        response = await chat.send_message(user_message)
-        return response
+        return response.text
 
 # Initialize bots
 central_brain = CentralBrainBot()
