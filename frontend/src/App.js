@@ -1041,7 +1041,19 @@ function App() {
     return <ChatInterface student={user} subject={currentSubject} onNavigate={navigate} />;
   }
 
-  // Other views can be added here (mindfulness, practice, progress, etc.)
+  if (currentView === 'mindfulness') {
+    return <MindfulnessComponent student={user} onNavigate={navigate} />;
+  }
+
+  if (currentView === 'practice') {
+    return <PracticeTestComponent student={user} onNavigate={navigate} />;
+  }
+
+  if (currentView === 'progress') {
+    return <ProgressTracker student={user} onNavigate={navigate} />;
+  }
+
+  // Other views can be added here
   return <div>Feature coming soon!</div>;
 }
 
