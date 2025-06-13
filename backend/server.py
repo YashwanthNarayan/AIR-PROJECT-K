@@ -1,12 +1,15 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import asyncio
+import jwt
+import bcrypt
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timedelta
@@ -24,6 +27,11 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+# JWT Settings
+JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-here')
+JWT_ALGORITHM = 'HS256'
+security = HTTPBearer()
+
 # Create the main app without a prefix
 app = FastAPI()
 
@@ -31,6 +39,10 @@ app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
 # Enums
+class UserType(str, Enum):
+    STUDENT = "student"
+    TEACHER = "teacher"
+
 class GradeLevel(str, Enum):
     GRADE_6 = "6th"
     GRADE_7 = "7th" 
@@ -60,11 +72,53 @@ class QuestionType(str, Enum):
     LONG_ANSWER = "long_answer"
     NUMERICAL = "numerical"
 
-# Enhanced Models
+# Authentication Models
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+    user_type: UserType
+
+class TeacherRegistration(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    school_name: str
+    subjects_taught: List[Subject]
+    grade_levels_taught: List[GradeLevel]
+    experience_years: int = 0
+
+class StudentRegistration(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    grade_level: GradeLevel
+    subjects: List[Subject] = []
+    learning_goals: List[str] = []
+    study_hours_per_day: int = 2
+    preferred_study_time: str = "evening"
+
+class Teacher(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    teacher_id: str
+    name: str
+    email: EmailStr
+    hashed_password: str
+    school_name: str
+    subjects_taught: List[Subject]
+    grade_levels_taught: List[GradeLevel]
+    experience_years: int
+    students: List[str] = []  # List of student IDs
+    classes: List[str] = []   # List of class IDs
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_active: datetime = Field(default_factory=datetime.utcnow)
+    is_verified: bool = False
+
 class StudentProfile(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     student_id: str
     name: str
+    email: EmailStr
+    hashed_password: str
     grade_level: GradeLevel
     subjects: List[Subject] = []
     learning_goals: List[str] = []
@@ -77,14 +131,7 @@ class StudentProfile(BaseModel):
     total_xp: int = 0
     level: int = 1
     badges: List[str] = []
-
-class StudentProfileCreate(BaseModel):
-    name: str
-    grade_level: GradeLevel
-    subjects: List[Subject] = []
-    learning_goals: List[str] = []
-    study_hours_per_day: int = 2
-    preferred_study_time: str = "evening"
+    assigned_teacher: Optional[str] = None  # Teacher ID
 
 class ChatMessage(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -100,12 +147,6 @@ class ChatMessage(BaseModel):
     confidence_score: Optional[float] = None
     learning_points: List[str] = []
 
-class ChatMessageCreate(BaseModel):
-    session_id: str
-    student_id: str
-    subject: Subject
-    user_message: str
-
 class ChatSession(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     session_id: str
@@ -116,10 +157,6 @@ class ChatSession(BaseModel):
     total_messages: int = 0
     topics_covered: List[str] = []
     session_summary: str = ""
-
-class ChatSessionCreate(BaseModel):
-    student_id: str
-    subject: Subject
 
 class PracticeQuestion(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -164,7 +201,156 @@ class MindfulnessActivity(BaseModel):
     mood_after: Optional[int] = None   # 1-10 scale
     completed_at: datetime = Field(default_factory=datetime.utcnow)
 
-# AI Bot Classes
+# Authentication utility functions
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt"""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verify_password(password: str, hashed_password: str) -> bool:
+    """Verify a password against its hash"""
+    return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    """Create a JWT access token"""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(hours=24)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return encoded_jwt
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Get current user from JWT token"""
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id: str = payload.get("sub")
+        user_type: str = payload.get("user_type")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+        return {"user_id": user_id, "user_type": user_type}
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+
+# Authentication Routes
+@api_router.post("/auth/register/student")
+async def register_student(student_data: StudentRegistration):
+    """Register a new student"""
+    # Check if email already exists
+    existing_student = await db.student_profiles.find_one({"email": student_data.email})
+    if existing_student:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Hash password
+    hashed_password = hash_password(student_data.password)
+    
+    # Create student profile
+    student_id = str(uuid.uuid4())
+    student_dict = student_data.dict()
+    student_dict.pop('password')  # Remove plain password
+    student_dict['student_id'] = student_id
+    student_dict['hashed_password'] = hashed_password
+    
+    student_obj = StudentProfile(**student_dict)
+    await db.student_profiles.insert_one(student_obj.dict())
+    
+    # Create access token
+    access_token = create_access_token(
+        data={"sub": student_id, "user_type": UserType.STUDENT}
+    )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_type": UserType.STUDENT,
+        "user": student_obj
+    }
+
+@api_router.post("/auth/register/teacher")
+async def register_teacher(teacher_data: TeacherRegistration):
+    """Register a new teacher"""
+    # Check if email already exists
+    existing_teacher = await db.teachers.find_one({"email": teacher_data.email})
+    if existing_teacher:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Hash password
+    hashed_password = hash_password(teacher_data.password)
+    
+    # Create teacher profile
+    teacher_id = str(uuid.uuid4())
+    teacher_dict = teacher_data.dict()
+    teacher_dict.pop('password')  # Remove plain password
+    teacher_dict['teacher_id'] = teacher_id
+    teacher_dict['hashed_password'] = hashed_password
+    
+    teacher_obj = Teacher(**teacher_dict)
+    await db.teachers.insert_one(teacher_obj.dict())
+    
+    # Create access token
+    access_token = create_access_token(
+        data={"sub": teacher_id, "user_type": UserType.TEACHER}
+    )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_type": UserType.TEACHER,
+        "user": teacher_obj
+    }
+
+@api_router.post("/auth/login")
+async def login(login_data: UserLogin):
+    """Login for both students and teachers"""
+    if login_data.user_type == UserType.STUDENT:
+        user = await db.student_profiles.find_one({"email": login_data.email})
+        if not user or not verify_password(login_data.password, user['hashed_password']):
+            raise HTTPException(status_code=401, detail="Incorrect email or password")
+        
+        user_id = user['student_id']
+    else:  # Teacher
+        user = await db.teachers.find_one({"email": login_data.email})
+        if not user or not verify_password(login_data.password, user['hashed_password']):
+            raise HTTPException(status_code=401, detail="Incorrect email or password")
+        
+        user_id = user['teacher_id']
+    
+    # Create access token
+    access_token = create_access_token(
+        data={"sub": user_id, "user_type": login_data.user_type}
+    )
+    
+    # Remove hashed_password from response
+    user.pop('hashed_password', None)
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_type": login_data.user_type,
+        "user": user
+    }
+
+@api_router.get("/auth/me")
+async def get_current_user_info(current_user = Depends(get_current_user)):
+    """Get current user information"""
+    user_id = current_user["user_id"]
+    user_type = current_user["user_type"]
+    
+    if user_type == UserType.STUDENT:
+        user = await db.student_profiles.find_one({"student_id": user_id})
+        if user:
+            user.pop('hashed_password', None)
+            return {"user": user, "user_type": user_type}
+    else:  # Teacher
+        user = await db.teachers.find_one({"teacher_id": user_id})
+        if user:
+            user.pop('hashed_password', None)
+            return {"user": user, "user_type": user_type}
+    
+    raise HTTPException(status_code=404, detail="User not found")
+
+# AI Bot Classes (keeping existing functionality)
 class CentralBrainBot:
     def __init__(self):
         self.api_key = os.environ.get('GEMINI_API_KEY')
@@ -299,95 +485,6 @@ class SubjectBot:
         
         return response.text
 
-class MindfulnessBot:
-    def __init__(self):
-        self.api_key = os.environ.get('GEMINI_API_KEY')
-        
-    async def provide_mindfulness_support(self, message: str, student_profile=None):
-        """Provide mindfulness and stress management support"""
-        
-        profile_context = ""
-        if student_profile:
-            profile_context = f"Student: Grade {student_profile.get('grade_level')}, Stress Level: Based on recent activity"
-            
-        system_prompt = f"""You are the Mindfulness Bot of Project K, specialized in helping students manage stress, anxiety, and maintain mental well-being.
-
-        {profile_context}
-        
-        Your capabilities:
-        1. Guided breathing exercises (4-7-8 technique, box breathing)
-        2. Short meditation sessions (1-5 minutes)
-        3. Stress management techniques
-        4. Study break activities
-        5. Burnout detection and prevention
-        6. Positive affirmations and motivation
-        
-        Available Activities:
-        - "BREATHING_EXERCISE": Guide through breathing techniques
-        - "MEDITATION": Short guided meditation
-        - "STRESS_RELIEF": Quick stress reduction techniques
-        - "STUDY_BREAK": Fun activities for study breaks
-        - "MOTIVATION": Positive reinforcement and encouragement
-        
-        Always:
-        - Be empathetic and understanding
-        - Provide practical, actionable advice
-        - Keep sessions age-appropriate for middle/high school students
-        - Encourage healthy study habits
-        - Recognize when to suggest taking breaks or seeking additional help
-        
-        If the student seems overwhelmed or mentions serious stress, gently suggest they also talk to a teacher, counselor, or parent."""
-        
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        chat = model.start_chat(history=[])
-        
-        response = await asyncio.to_thread(
-            chat.send_message,
-            f"System: {system_prompt}\n\nUser: {message}"
-        )
-        
-        return response.text
-
-class PracticeTestBot:
-    def __init__(self):
-        self.api_key = os.environ.get('GEMINI_API_KEY')
-        
-    async def generate_practice_questions(self, subject: Subject, topic: str, difficulty: DifficultyLevel, count: int = 5):
-        """Generate adaptive practice questions"""
-        
-        system_prompt = f"""You are the Practice Test Bot of Project K. Generate {count} practice questions for:
-        
-        Subject: {subject.value.title()}
-        Topic: {topic}
-        Difficulty: {difficulty.value.title()}
-        
-        For each question, provide:
-        1. Question text
-        2. Question type (MCQ/Short Answer/Numerical)
-        3. Options (if MCQ)
-        4. Correct answer
-        5. Detailed explanation
-        6. Learning objective
-        
-        Format as JSON array:
-        [
-          {{
-            "question_text": "...",
-            "question_type": "mcq",
-            "options": ["A", "B", "C", "D"],
-            "correct_answer": "A",
-            "explanation": "...",
-            "learning_objective": "..."
-          }}
-        ]
-        
-        Make questions NCERT curriculum aligned and age-appropriate."""
-        
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = await asyncio.to_thread(model.generate_content, system_prompt)
-        
-        return response.text
-
 # Initialize bots
 central_brain = CentralBrainBot()
 subject_bots = {
@@ -399,97 +496,91 @@ subject_bots = {
     Subject.HISTORY: SubjectBot(Subject.HISTORY),
     Subject.GEOGRAPHY: SubjectBot(Subject.GEOGRAPHY)
 }
-mindfulness_bot = MindfulnessBot()
-practice_bot = PracticeTestBot()
 
-# Routes - Student Profile Management
-@api_router.post("/student/profile", response_model=StudentProfile)
-async def create_student_profile(input: StudentProfileCreate):
-    """Create a new student profile"""
-    profile_dict = input.dict()
-    student_id = str(uuid.uuid4())
-    profile_dict['student_id'] = student_id
-    profile_obj = StudentProfile(**profile_dict)
-    await db.student_profiles.insert_one(profile_obj.dict())
-    return profile_obj
-
-@api_router.get("/student/profile/{student_id}", response_model=StudentProfile)
-async def get_student_profile(student_id: str):
-    """Get student profile"""
-    profile = await db.student_profiles.find_one({"student_id": student_id})
+# Student Routes (require authentication)
+@api_router.get("/student/profile")
+async def get_student_profile(current_user = Depends(get_current_user)):
+    """Get current student profile"""
+    if current_user["user_type"] != UserType.STUDENT:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    profile = await db.student_profiles.find_one({"student_id": current_user["user_id"]})
     if not profile:
         raise HTTPException(status_code=404, detail="Student profile not found")
-    return StudentProfile(**profile)
+    
+    profile.pop('hashed_password', None)
+    return profile
 
-@api_router.put("/student/profile/{student_id}", response_model=StudentProfile)
-async def update_student_profile(student_id: str, updates: Dict[str, Any]):
-    """Update student profile"""
+@api_router.put("/student/profile")
+async def update_student_profile(updates: Dict[str, Any], current_user = Depends(get_current_user)):
+    """Update current student profile"""
+    if current_user["user_type"] != UserType.STUDENT:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
     updates['last_active'] = datetime.utcnow()
     result = await db.student_profiles.update_one(
-        {"student_id": student_id}, 
+        {"student_id": current_user["user_id"]}, 
         {"$set": updates}
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Student profile not found")
     
-    profile = await db.student_profiles.find_one({"student_id": student_id})
-    return StudentProfile(**profile)
+    profile = await db.student_profiles.find_one({"student_id": current_user["user_id"]})
+    profile.pop('hashed_password', None)
+    return profile
 
-# Enhanced Chat Routes
-@api_router.post("/chat/session", response_model=ChatSession)
-async def create_chat_session(input: ChatSessionCreate):
+# Enhanced Chat Routes with Authentication
+@api_router.post("/chat/session")
+async def create_chat_session(subject: Subject, current_user = Depends(get_current_user)):
     """Create a new chat session for a subject"""
-    session_dict = input.dict()
+    if current_user["user_type"] != UserType.STUDENT:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
     session_id = str(uuid.uuid4())
-    session_dict['session_id'] = session_id
-    session_obj = ChatSession(**session_dict)
+    session_obj = ChatSession(
+        session_id=session_id,
+        student_id=current_user["user_id"],
+        subject=subject
+    )
     await db.chat_sessions.insert_one(session_obj.dict())
     return session_obj
 
-@api_router.post("/chat/message", response_model=ChatMessage)
-async def send_chat_message(input: ChatMessageCreate):
+@api_router.post("/chat/message")
+async def send_chat_message(session_id: str, user_message: str, subject: Subject, current_user = Depends(get_current_user)):
     """Send a message and get AI response"""
+    if current_user["user_type"] != UserType.STUDENT:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
     try:
         # Get student profile for context
-        student_profile = await db.student_profiles.find_one({"student_id": input.student_id})
+        student_profile = await db.student_profiles.find_one({"student_id": current_user["user_id"]})
         
         # Get conversation history for context
         conversation_history = await db.chat_messages.find(
-            {"session_id": input.session_id}
+            {"session_id": session_id}
         ).sort("timestamp", -1).limit(10).to_list(10)
         
-        # Let central brain analyze the message
-        central_response = await central_brain.analyze_and_route(
-            input.user_message, input.session_id, student_profile
-        )
-        
-        # Determine routing based on subject or central brain analysis
+        # Route to specific subject bot
         bot_response = ""
-        bot_type = "central_brain"
+        bot_type = f"{subject.value}_bot"
         
-        if input.subject in subject_bots:
-            # Route to specific subject bot
-            bot_response = await subject_bots[input.subject].teach_subject(
-                input.user_message, input.session_id, student_profile, conversation_history
+        if subject in subject_bots:
+            bot_response = await subject_bots[subject].teach_subject(
+                user_message, session_id, student_profile, conversation_history
             )
-            bot_type = f"{input.subject.value}_bot"
-        elif "ROUTE_TO: mindfulness_bot" in central_response or "stress" in input.user_message.lower():
-            # Route to mindfulness bot
-            bot_response = await mindfulness_bot.provide_mindfulness_support(
-                input.user_message, student_profile
-            )
-            bot_type = "mindfulness_bot"
         else:
-            # Handle with central brain
-            bot_response = central_response
+            # Fallback to central brain
+            bot_response = await central_brain.analyze_and_route(
+                user_message, session_id, student_profile
+            )
             bot_type = "central_brain"
         
         # Create and save the message
         message_obj = ChatMessage(
-            session_id=input.session_id,
-            student_id=input.student_id,
-            subject=input.subject,
-            user_message=input.user_message,
+            session_id=session_id,
+            student_id=current_user["user_id"],
+            subject=subject,
+            user_message=user_message,
             bot_response=bot_response,
             bot_type=bot_type
         )
@@ -498,7 +589,7 @@ async def send_chat_message(input: ChatMessageCreate):
         
         # Update session activity
         await db.chat_sessions.update_one(
-            {"session_id": input.session_id},
+            {"session_id": session_id},
             {
                 "$set": {"last_active": datetime.utcnow()},
                 "$inc": {"total_messages": 1}
@@ -509,7 +600,7 @@ async def send_chat_message(input: ChatMessageCreate):
         if student_profile:
             xp_earned = 5  # Base XP for asking questions
             await db.student_profiles.update_one(
-                {"student_id": input.student_id},
+                {"student_id": current_user["user_id"]},
                 {
                     "$inc": {"total_xp": xp_earned},
                     "$set": {"last_active": datetime.utcnow()}
@@ -522,69 +613,41 @@ async def send_chat_message(input: ChatMessageCreate):
         logger.error(f"Error in chat message: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
 
-@api_router.get("/chat/history/{student_id}")
-async def get_chat_history_by_student(student_id: str, subject: Optional[Subject] = None):
-    """Get chat history for a student, optionally filtered by subject"""
-    query = {"student_id": student_id}
+@api_router.get("/chat/history")
+async def get_chat_history(subject: Optional[Subject] = None, current_user = Depends(get_current_user)):
+    """Get chat history for current student, optionally filtered by subject"""
+    if current_user["user_type"] != UserType.STUDENT:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    query = {"student_id": current_user["user_id"]}
     if subject:
         query["subject"] = subject
         
     messages = await db.chat_messages.find(query).sort("timestamp", 1).to_list(1000)
-    return [ChatMessage(**message) for message in messages]
+    return messages
 
-@api_router.get("/chat/sessions/{student_id}")
-async def get_student_sessions(student_id: str):
-    """Get all chat sessions for a student"""
-    sessions = await db.chat_sessions.find({"student_id": student_id}).sort("last_active", -1).to_list(100)
-    return [ChatSession(**session) for session in sessions]
-
-# Practice Test Routes
-@api_router.post("/practice/generate")
-async def generate_practice_test(subject: Subject, topic: str, difficulty: DifficultyLevel, count: int = 5):
-    """Generate practice questions"""
-    try:
-        questions_text = await practice_bot.generate_practice_questions(subject, topic, difficulty, count)
-        # Here you would parse the JSON and save to database
-        return {"message": "Practice test generated", "questions": questions_text}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating practice test: {str(e)}")
-
-# Mindfulness Routes
-@api_router.post("/mindfulness/session")
-async def start_mindfulness_session(input: dict):
-    """Start a mindfulness session"""
-    session = MindfulnessActivity(
-        student_id=input["student_id"],
-        activity_type=input["activity_type"],
-        duration=input["duration"]
-    )
-    await db.mindfulness_activities.insert_one(session.dict())
-    return session
-
-@api_router.get("/mindfulness/activities/{student_id}")
-async def get_mindfulness_history(student_id: str):
-    """Get mindfulness activity history"""
-    activities = await db.mindfulness_activities.find({"student_id": student_id}).sort("completed_at", -1).to_list(50)
-    return [MindfulnessActivity(**activity) for activity in activities]
-
-# Dashboard Routes
-@api_router.get("/dashboard/{student_id}")
-async def get_student_dashboard(student_id: str):
-    """Get comprehensive dashboard data for a student"""
-    profile = await db.student_profiles.find_one({"student_id": student_id})
+@api_router.get("/dashboard")
+async def get_student_dashboard(current_user = Depends(get_current_user)):
+    """Get comprehensive dashboard data for current student"""
+    if current_user["user_type"] != UserType.STUDENT:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    profile = await db.student_profiles.find_one({"student_id": current_user["user_id"]})
     if not profile:
         raise HTTPException(status_code=404, detail="Student not found")
     
     # Get recent activity
-    recent_messages = await db.chat_messages.find({"student_id": student_id}).sort("timestamp", -1).limit(10).to_list(10)
-    recent_sessions = await db.chat_sessions.find({"student_id": student_id}).sort("last_active", -1).limit(5).to_list(5)
+    recent_messages = await db.chat_messages.find({"student_id": current_user["user_id"]}).sort("timestamp", -1).limit(10).to_list(10)
+    recent_sessions = await db.chat_sessions.find({"student_id": current_user["user_id"]}).sort("last_active", -1).limit(5).to_list(5)
     
     # Calculate study stats
-    total_messages = await db.chat_messages.count_documents({"student_id": student_id})
-    subjects_studied = await db.chat_messages.distinct("subject", {"student_id": student_id})
+    total_messages = await db.chat_messages.count_documents({"student_id": current_user["user_id"]})
+    subjects_studied = await db.chat_messages.distinct("subject", {"student_id": current_user["user_id"]})
+    
+    profile.pop('hashed_password', None)
     
     return {
-        "profile": StudentProfile(**profile),
+        "profile": profile,
         "stats": {
             "total_messages": total_messages,
             "subjects_studied": len(subjects_studied),
@@ -593,8 +656,8 @@ async def get_student_dashboard(student_id: str):
             "level": profile.get("level", 1)
         },
         "recent_activity": {
-            "messages": [ChatMessage(**msg) for msg in recent_messages],
-            "sessions": [ChatSession(**session) for session in recent_sessions]
+            "messages": recent_messages,
+            "sessions": recent_sessions
         },
         "subjects_progress": subjects_studied
     }
@@ -602,11 +665,11 @@ async def get_student_dashboard(student_id: str):
 # Health check routes
 @api_router.get("/")
 async def root():
-    return {"message": "Project K - AI Educational Chatbot API v2.0"}
+    return {"message": "Project K - AI Educational Chatbot API v3.0"}
 
 @api_router.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": datetime.utcnow(), "version": "2.0"}
+    return {"status": "healthy", "timestamp": datetime.utcnow(), "version": "3.0"}
 
 # Include the router in the main app
 app.include_router(api_router)
