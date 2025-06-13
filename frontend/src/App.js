@@ -646,8 +646,341 @@ const StudentDashboard = ({ student, onNavigate, dashboardData, onLogout }) => {
   );
 };
 
-// Teacher Dashboard (New)
+// Teacher Dashboard (Complete V3)
 const TeacherDashboard = ({ teacher, onLogout }) => {
+  const [dashboardData, setDashboardData] = useState(null);
+  const [selectedView, setSelectedView] = useState('overview'); // 'overview', 'students', 'classes', 'analytics', 'assignments'
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [studentAnalytics, setStudentAnalytics] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/api/teacher/dashboard`);
+      setDashboardData(response.data);
+    } catch (error) {
+      console.error('Error loading teacher dashboard:', error);
+    }
+  };
+
+  const loadStudentAnalytics = async (studentId) => {
+    setIsLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE}/api/teacher/student/${studentId}/analytics`);
+      setStudentAnalytics(response.data);
+      setSelectedStudent(studentId);
+    } catch (error) {
+      console.error('Error loading student analytics:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Overview Tab
+  const OverviewTab = () => (
+    <div className="space-y-6">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white rounded-xl p-6 shadow-md">
+          <div className="flex items-center">
+            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
+              <span className="text-2xl">👥</span>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-gray-900">{dashboardData?.stats?.total_students || 0}</div>
+              <div className="text-sm text-gray-600">Total Students</div>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl p-6 shadow-md">
+          <div className="flex items-center">
+            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
+              <span className="text-2xl">🏫</span>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-gray-900">{dashboardData?.stats?.total_classes || 0}</div>
+              <div className="text-sm text-gray-600">Classes</div>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl p-6 shadow-md">
+          <div className="flex items-center">
+            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center mr-4">
+              <span className="text-2xl">🚨</span>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-gray-900">{dashboardData?.stats?.active_alerts || 0}</div>
+              <div className="text-sm text-gray-600">Active Alerts</div>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl p-6 shadow-md">
+          <div className="flex items-center">
+            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-4">
+              <span className="text-2xl">📚</span>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-gray-900">{dashboardData?.stats?.subjects_taught?.length || 0}</div>
+              <div className="text-sm text-gray-600">Subjects</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Recent Activity */}
+      <div className="bg-white rounded-2xl shadow-lg p-6">
+        <h3 className="text-xl font-bold text-gray-900 mb-4">Recent Student Activity</h3>
+        <div className="space-y-3">
+          {dashboardData?.recent_activity?.slice(0, 8).map((activity, index) => (
+            <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+              <div className="text-2xl">
+                {activity.subject === 'math' && '🧮'}
+                {activity.subject === 'physics' && '⚡'}
+                {activity.subject === 'chemistry' && '🧪'}
+                {activity.subject === 'biology' && '🧬'}
+                {activity.subject === 'english' && '📖'}
+                {activity.subject === 'history' && '🏛️'}
+                {activity.subject === 'geography' && '🌍'}
+              </div>
+              <div className="flex-1">
+                <div className="font-medium">{activity.student_name}</div>
+                <div className="text-sm text-gray-600 capitalize">{activity.subject}: {activity.message_preview}</div>
+              </div>
+              <div className="text-xs text-gray-500">
+                {new Date(activity.timestamp).toLocaleDateString()}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Alerts */}
+      {dashboardData?.alerts?.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-lg p-6">
+          <h3 className="text-xl font-bold text-gray-900 mb-4">Active Alerts</h3>
+          <div className="space-y-3">
+            {dashboardData.alerts.map((alert, index) => (
+              <div key={index} className="flex items-center space-x-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <div className="text-2xl">🚨</div>
+                <div className="flex-1">
+                  <div className="font-medium text-red-800">{alert.title}</div>
+                  <div className="text-sm text-red-600">{alert.description}</div>
+                </div>
+                <div className="text-xs text-red-500">
+                  {new Date(alert.created_at).toLocaleDateString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // Students Tab
+  const StudentsTab = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-xl font-bold text-gray-900">My Students</h3>
+        <button
+          onClick={() => setSelectedView('add-students')}
+          className="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600"
+        >
+          Add Students
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {dashboardData?.students?.map((student) => (
+          <div key={student.student_id} className="bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-12 h-12 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full flex items-center justify-center">
+                <span className="text-white font-bold">{student.name.charAt(0)}</span>
+              </div>
+              <div>
+                <h4 className="font-semibold text-gray-900">{student.name}</h4>
+                <p className="text-sm text-gray-600">Grade {student.grade_level}</p>
+              </div>
+            </div>
+            
+            <div className="space-y-2 mb-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">XP:</span>
+                <span className="font-medium">{student.total_xp || 0}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Level:</span>
+                <span className="font-medium">{student.level || 1}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Streak:</span>
+                <span className="font-medium">{student.streak_days || 0} days</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => loadStudentAnalytics(student.student_id)}
+              className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white py-2 px-4 rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all"
+            >
+              View Analytics
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // Student Analytics Modal
+  const StudentAnalyticsModal = () => {
+    if (!studentAnalytics) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
+        <div className="bg-white rounded-2xl max-w-4xl w-full max-h-screen overflow-y-auto">
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">
+                Student Analytics: {studentAnalytics.student_name}
+              </h2>
+              <button
+                onClick={() => {setStudentAnalytics(null); setSelectedStudent(null);}}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Student Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-blue-50 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-blue-600">{studentAnalytics.total_xp}</div>
+                <div className="text-sm text-blue-800">Total XP</div>
+              </div>
+              <div className="bg-green-50 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-green-600">{studentAnalytics.level}</div>
+                <div className="text-sm text-green-800">Current Level</div>
+              </div>
+              <div className="bg-purple-50 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-purple-600">{studentAnalytics.total_messages}</div>
+                <div className="text-sm text-purple-800">Messages</div>
+              </div>
+              <div className="bg-orange-50 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-orange-600">{studentAnalytics.streak_days}</div>
+                <div className="text-sm text-orange-800">Day Streak</div>
+              </div>
+            </div>
+
+            {/* Subject Activity */}
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Subject Activity</h3>
+              <div className="space-y-3">
+                {Object.entries(studentAnalytics.subjects_activity || {}).map(([subject, activity]) => (
+                  <div key={subject} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-2xl">
+                        {subject === 'math' && '🧮'}
+                        {subject === 'physics' && '⚡'}
+                        {subject === 'chemistry' && '🧪'}
+                        {subject === 'biology' && '🧬'}
+                        {subject === 'english' && '📖'}
+                        {subject === 'history' && '🏛️'}
+                        {subject === 'geography' && '🌍'}
+                      </span>
+                      <span className="font-medium capitalize">{subject}</span>
+                    </div>
+                    <div className="text-sm text-gray-600">{activity.count} messages</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* AI Insights */}
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Insights</h3>
+              <div className="bg-indigo-50 p-4 rounded-lg">
+                <p className="text-indigo-800 whitespace-pre-wrap">{studentAnalytics.ai_insights}</p>
+              </div>
+            </div>
+
+            {/* Struggling Subjects */}
+            {studentAnalytics.struggling_subjects?.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Needs Attention</h3>
+                <div className="flex flex-wrap gap-2">
+                  {studentAnalytics.struggling_subjects.map((subject) => (
+                    <span
+                      key={subject}
+                      className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-medium"
+                    >
+                      {subject}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Recommended Actions */}
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Recommended Actions</h3>
+              <ul className="list-disc list-inside space-y-2 text-gray-700">
+                {studentAnalytics.recommended_actions?.map((action, index) => (
+                  <li key={index}>{action}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Classes Tab
+  const ClassesTab = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-xl font-bold text-gray-900">My Classes</h3>
+        <button
+          onClick={() => setSelectedView('create-class')}
+          className="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600"
+        >
+          Create Class
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {dashboardData?.classes?.map((classroom) => (
+          <div key={classroom.class_id} className="bg-white rounded-xl p-6 shadow-md">
+            <div className="mb-4">
+              <h4 className="font-semibold text-gray-900 text-lg">{classroom.name}</h4>
+              <p className="text-sm text-gray-600 capitalize">
+                {classroom.subject} • Grade {classroom.grade_level}
+              </p>
+            </div>
+            
+            <div className="space-y-2 mb-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Students:</span>
+                <span className="font-medium">{classroom.students?.length || 0}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Created:</span>
+                <span className="font-medium">{new Date(classroom.created_at).toLocaleDateString()}</span>
+              </div>
+            </div>
+
+            <button className="w-full bg-indigo-500 text-white py-2 px-4 rounded-lg hover:bg-indigo-600 transition-colors">
+              Manage Class
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-indigo-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -655,13 +988,13 @@ const TeacherDashboard = ({ teacher, onLogout }) => {
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Welcome, {teacher?.name || 'Teacher'}!</h1>
-              <p className="text-gray-600">{teacher?.school_name} • {teacher?.experience_years} years experience</p>
+              <h1 className="text-3xl font-bold text-gray-900">Teacher Dashboard</h1>
+              <p className="text-gray-600">{teacher?.name} • {teacher?.school_name}</p>
             </div>
             <div className="flex items-center space-x-4">
               <div className="text-right">
-                <div className="text-lg font-bold text-purple-600">{teacher?.students?.length || 0} Students</div>
-                <div className="text-sm text-gray-600">👩‍🏫 {teacher?.subjects_taught?.length || 0} Subjects</div>
+                <div className="text-lg font-bold text-purple-600">{dashboardData?.stats?.total_students || 0} Students</div>
+                <div className="text-sm text-gray-600">📚 {dashboardData?.stats?.subjects_taught?.length || 0} Subjects</div>
               </div>
               <button
                 onClick={onLogout}
@@ -673,31 +1006,69 @@ const TeacherDashboard = ({ teacher, onLogout }) => {
           </div>
         </div>
 
-        {/* Coming Soon Message */}
-        <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-          <div className="text-6xl mb-6">🚧</div>
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">Teacher Dashboard Coming Soon!</h2>
-          <p className="text-xl text-gray-600 mb-8">
-            We're building an amazing teacher experience with student analytics, class management, and progress tracking.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-            <div className="bg-purple-50 rounded-xl p-6">
-              <div className="text-3xl mb-3">📊</div>
-              <h3 className="font-semibold text-gray-900 mb-2">Student Analytics</h3>
-              <p className="text-sm text-gray-600">Track individual student progress and learning patterns</p>
-            </div>
-            <div className="bg-pink-50 rounded-xl p-6">
-              <div className="text-3xl mb-3">🏫</div>
-              <h3 className="font-semibold text-gray-900 mb-2">Class Management</h3>
-              <p className="text-sm text-gray-600">Organize students into classes and monitor group performance</p>
-            </div>
-            <div className="bg-indigo-50 rounded-xl p-6">
-              <div className="text-3xl mb-3">💬</div>
-              <h3 className="font-semibold text-gray-900 mb-2">Communication Tools</h3>
-              <p className="text-sm text-gray-600">Send feedback and assignments to students</p>
-            </div>
+        {/* Navigation Tabs */}
+        <div className="bg-white rounded-2xl shadow-lg mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="flex space-x-8 px-6">
+              {[
+                { key: 'overview', label: 'Overview', icon: '📊' },
+                { key: 'students', label: 'Students', icon: '👥' },
+                { key: 'classes', label: 'Classes', icon: '🏫' },
+                { key: 'analytics', label: 'Analytics', icon: '📈' },
+                { key: 'assignments', label: 'Assignments', icon: '📋' }
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setSelectedView(tab.key)}
+                  className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
+                    selectedView === tab.key
+                      ? 'border-purple-500 text-purple-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="mr-2">{tab.icon}</span>
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
           </div>
         </div>
+
+        {/* Content Area */}
+        <div className="bg-white rounded-2xl shadow-lg p-6">
+          {selectedView === 'overview' && <OverviewTab />}
+          {selectedView === 'students' && <StudentsTab />}
+          {selectedView === 'classes' && <ClassesTab />}
+          {selectedView === 'analytics' && (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">📈</div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-4">Advanced Analytics</h3>
+              <p className="text-gray-600">Comprehensive student performance analytics coming soon!</p>
+            </div>
+          )}
+          {selectedView === 'assignments' && (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">📋</div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-4">Assignment Manager</h3>
+              <p className="text-gray-600">Create and manage student assignments coming soon!</p>
+            </div>
+          )}
+        </div>
+
+        {/* Loading Overlay */}
+        {isLoading && (
+          <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-40">
+            <div className="bg-white rounded-lg p-6">
+              <div className="flex items-center space-x-3">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+                <span>Loading analytics...</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Student Analytics Modal */}
+        {studentAnalytics && <StudentAnalyticsModal />}
       </div>
     </div>
   );
