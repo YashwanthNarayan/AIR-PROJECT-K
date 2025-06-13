@@ -4,10 +4,131 @@ import './App.css';
 
 const API_BASE = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
-// Components
-const StudentDashboard = ({ student, onNavigate, dashboardData }) => {
+// Student Setup Component
+const StudentSetup = ({ onComplete }) => {
+  const [formData, setFormData] = useState({
+    name: '',
+    grade_level: '9th',
+    subjects: [],
+    learning_goals: [],
+    study_hours_per_day: 2,
+    preferred_study_time: 'evening'
+  });
+
   const subjects = ['math', 'physics', 'chemistry', 'biology', 'english', 'history', 'geography'];
   const gradeOptions = ['6th', '7th', '8th', '9th', '10th', '11th', '12th'];
+
+  const handleSubjectToggle = (subject) => {
+    setFormData(prev => ({
+      ...prev,
+      subjects: prev.subjects.includes(subject)
+        ? prev.subjects.filter(s => s !== subject)
+        : [...prev.subjects, subject]
+    }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onComplete(formData);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-2xl shadow-lg p-8">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <span className="text-white font-bold text-2xl">K</span>
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to Project K!</h1>
+            <p className="text-gray-600">Let's set up your personalized learning profile</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Your Name</label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
+              <select
+                value={formData.grade_level}
+                onChange={(e) => setFormData(prev => ({ ...prev, grade_level: e.target.value }))}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {gradeOptions.map(grade => (
+                  <option key={grade} value={grade}>{grade} Grade</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Subjects to Study</label>
+              <div className="grid grid-cols-2 gap-3">
+                {subjects.map(subject => (
+                  <button
+                    key={subject}
+                    type="button"
+                    onClick={() => handleSubjectToggle(subject)}
+                    className={`p-3 rounded-lg border-2 transition-all duration-200 ${
+                      formData.subjects.includes(subject)
+                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="text-2xl mb-1">
+                      {subject === 'math' && '🧮'}
+                      {subject === 'physics' && '⚡'}
+                      {subject === 'chemistry' && '🧪'}
+                      {subject === 'biology' && '🧬'}
+                      {subject === 'english' && '📖'}
+                      {subject === 'history' && '🏛️'}
+                      {subject === 'geography' && '🌍'}
+                    </div>
+                    <div className="capitalize font-medium">{subject}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Daily Study Hours</label>
+              <select
+                value={formData.study_hours_per_day}
+                onChange={(e) => setFormData(prev => ({ ...prev, study_hours_per_day: parseInt(e.target.value) }))}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value={1}>1 hour</option>
+                <option value={2}>2 hours</option>
+                <option value={3}>3 hours</option>
+                <option value={4}>4+ hours</option>
+              </select>
+            </div>
+
+            <button
+              type="submit"
+              disabled={!formData.name || formData.subjects.length === 0}
+              className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white py-4 px-6 rounded-lg font-medium hover:from-indigo-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+            >
+              Start Learning Journey! 🚀
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Student Dashboard Component
+const StudentDashboard = ({ student, onNavigate, dashboardData }) => {
+  const subjects = ['math', 'physics', 'chemistry', 'biology', 'english', 'history', 'geography'];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
@@ -160,6 +281,7 @@ const StudentDashboard = ({ student, onNavigate, dashboardData }) => {
   );
 };
 
+// Chat Interface Component
 const ChatInterface = ({ student, subject, onNavigate }) => {
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -197,17 +319,20 @@ const ChatInterface = ({ student, subject, onNavigate }) => {
   const loadChatHistory = async () => {
     try {
       const response = await axios.get(`${API_BASE}/api/chat/history/${student.student_id}?subject=${subject}`);
-      const history = response.data.map(msg => ({
-        text: msg.user_message,
-        sender: 'user',
-        timestamp: new Date(msg.timestamp).toLocaleTimeString()
-      })).concat(response.data.map(msg => ({
-        text: msg.bot_response,
-        sender: 'bot',
-        bot_type: msg.bot_type,
-        timestamp: new Date(msg.timestamp).toLocaleTimeString()
-      }))).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-      
+      const history = [];
+      response.data.forEach(msg => {
+        history.push({
+          text: msg.user_message,
+          sender: 'user',
+          timestamp: new Date(msg.timestamp).toLocaleTimeString()
+        });
+        history.push({
+          text: msg.bot_response,
+          sender: 'bot',
+          bot_type: msg.bot_type,
+          timestamp: new Date(msg.timestamp).toLocaleTimeString()
+        });
+      });
       setMessages(history);
     } catch (error) {
       console.error('Error loading chat history:', error);
@@ -287,7 +412,7 @@ const ChatInterface = ({ student, subject, onNavigate }) => {
                 onClick={() => onNavigate('dashboard')}
                 className="text-indigo-600 hover:text-indigo-700"
               >
-                ←
+                ← Back
               </button>
               <div className="text-2xl">
                 {subject === 'math' && '🧮'}
@@ -412,6 +537,7 @@ const ChatInterface = ({ student, subject, onNavigate }) => {
   );
 };
 
+// Mindfulness Component
 const MindfulnessComponent = ({ student, onNavigate }) => {
   const [currentActivity, setCurrentActivity] = useState(null);
   const [isActive, setIsActive] = useState(false);
@@ -427,7 +553,7 @@ const MindfulnessComponent = ({ student, onNavigate }) => {
   const startActivity = (activity) => {
     setCurrentActivity(activity);
     setIsActive(true);
-    setTimer(activity.duration * 60); // Convert to seconds
+    setTimer(activity.duration * 60);
   };
 
   const stopActivity = () => {
@@ -444,7 +570,6 @@ const MindfulnessComponent = ({ student, onNavigate }) => {
       }, 1000);
     } else if (timer === 0 && isActive) {
       setIsActive(false);
-      // Activity completed
     }
     return () => clearInterval(interval);
   }, [isActive, timer]);
@@ -464,7 +589,7 @@ const MindfulnessComponent = ({ student, onNavigate }) => {
             onClick={() => onNavigate('dashboard')}
             className="text-indigo-600 hover:text-indigo-700 mr-4"
           >
-            ←
+            ← Back
           </button>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">🧘 Mindfulness Toolbox</h1>
@@ -526,9 +651,374 @@ const MindfulnessComponent = ({ student, onNavigate }) => {
   );
 };
 
+// Practice Test Component
+const PracticeTestComponent = ({ student, onNavigate }) => {
+  const [selectedSubject, setSelectedSubject] = useState('');
+  const [selectedTopic, setSelectedTopic] = useState('');
+  const [difficulty, setDifficulty] = useState('medium');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [currentQuestions, setCurrentQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [userAnswers, setUserAnswers] = useState({});
+  const [showResults, setShowResults] = useState(false);
+
+  const subjects = {
+    math: { name: 'Mathematics', topics: ['Algebra', 'Geometry', 'Calculus', 'Statistics'] },
+    physics: { name: 'Physics', topics: ['Mechanics', 'Thermodynamics', 'Optics', 'Electricity'] },
+    chemistry: { name: 'Chemistry', topics: ['Atomic Structure', 'Organic Chemistry', 'Acids & Bases'] },
+    biology: { name: 'Biology', topics: ['Cell Biology', 'Genetics', 'Ecology', 'Human Physiology'] }
+  };
+
+  const sampleQuestions = {
+    math: [
+      {
+        id: '1',
+        question: 'Solve for x: 2x + 5 = 15',
+        options: ['x = 5', 'x = 10', 'x = 7.5', 'x = 2.5'],
+        correctAnswer: 'x = 5',
+        explanation: 'Subtract 5 from both sides: 2x = 10. Then divide by 2: x = 5.'
+      },
+      {
+        id: '2',
+        question: 'What is the area of a circle with radius 3?',
+        options: ['9π', '6π', '3π', '12π'],
+        correctAnswer: '9π',
+        explanation: 'Area = πr². With r = 3, Area = π(3)² = 9π.'
+      }
+    ],
+    physics: [
+      {
+        id: '1',
+        question: 'What is Newton\'s First Law of Motion?',
+        options: ['F = ma', 'An object at rest stays at rest unless acted upon by a force', 'For every action there is an equal and opposite reaction', 'None of the above'],
+        correctAnswer: 'An object at rest stays at rest unless acted upon by a force',
+        explanation: 'Newton\'s First Law states that an object at rest stays at rest and an object in motion stays in motion unless acted upon by an external force.'
+      }
+    ]
+  };
+
+  const generatePracticeTest = () => {
+    setIsGenerating(true);
+    // Simulate API call
+    setTimeout(() => {
+      const questions = sampleQuestions[selectedSubject] || [];
+      setCurrentQuestions(questions);
+      setCurrentQuestionIndex(0);
+      setUserAnswers({});
+      setShowResults(false);
+      setIsGenerating(false);
+    }, 1000);
+  };
+
+  const handleAnswerSelect = (questionId, answer) => {
+    setUserAnswers(prev => ({
+      ...prev,
+      [questionId]: answer
+    }));
+  };
+
+  const nextQuestion = () => {
+    if (currentQuestionIndex < currentQuestions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1);
+    } else {
+      setShowResults(true);
+    }
+  };
+
+  const calculateScore = () => {
+    let correct = 0;
+    currentQuestions.forEach(q => {
+      if (userAnswers[q.id] === q.correctAnswer) {
+        correct++;
+      }
+    });
+    return (correct / currentQuestions.length) * 100;
+  };
+
+  if (showResults) {
+    const score = calculateScore();
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+            <div className="text-6xl mb-6">🎉</div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Test Complete!</h2>
+            <div className="text-4xl font-bold text-indigo-600 mb-6">{score.toFixed(0)}%</div>
+            <p className="text-lg text-gray-700 mb-8">
+              You scored {Math.round((score/100) * currentQuestions.length)} out of {currentQuestions.length} questions correctly!
+            </p>
+            <div className="space-x-4">
+              <button
+                onClick={() => setCurrentQuestions([])}
+                className="bg-indigo-500 text-white px-6 py-3 rounded-lg hover:bg-indigo-600"
+              >
+                Take Another Test
+              </button>
+              <button
+                onClick={() => onNavigate('dashboard')}
+                className="bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentQuestions.length > 0) {
+    const currentQuestion = currentQuestions[currentQuestionIndex];
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Practice Test</h2>
+              <div className="text-sm text-gray-600">
+                Question {currentQuestionIndex + 1} of {currentQuestions.length}
+              </div>
+            </div>
+            
+            <div className="mb-8">
+              <h3 className="text-xl font-semibold text-gray-900 mb-6">{currentQuestion.question}</h3>
+              <div className="space-y-3">
+                {currentQuestion.options.map((option, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleAnswerSelect(currentQuestion.id, option)}
+                    className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                      userAnswers[currentQuestion.id] === option
+                        ? 'border-indigo-500 bg-indigo-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={nextQuestion}
+              disabled={!userAnswers[currentQuestion.id]}
+              className="w-full bg-indigo-500 text-white py-3 rounded-lg hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {currentQuestionIndex === currentQuestions.length - 1 ? 'Finish Test' : 'Next Question'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex items-center mb-8">
+          <button
+            onClick={() => onNavigate('dashboard')}
+            className="text-indigo-600 hover:text-indigo-700 mr-4"
+          >
+            ← Back
+          </button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">📝 Practice Tests</h1>
+            <p className="text-gray-600">Test your knowledge with adaptive quizzes</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg p-8">
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+              <select
+                value={selectedSubject}
+                onChange={(e) => setSelectedSubject(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">Choose a subject</option>
+                {Object.entries(subjects).map(([key, subject]) => (
+                  <option key={key} value={key}>{subject.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {selectedSubject && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Topic</label>
+                <select
+                  value={selectedTopic}
+                  onChange={(e) => setSelectedTopic(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">Choose a topic</option>
+                  {subjects[selectedSubject].topics.map((topic) => (
+                    <option key={topic} value={topic}>{topic}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Difficulty</label>
+              <select
+                value={difficulty}
+                onChange={(e) => setDifficulty(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+
+            <button
+              onClick={generatePracticeTest}
+              disabled={!selectedSubject || !selectedTopic || isGenerating}
+              className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white py-4 px-6 rounded-lg font-medium hover:from-indigo-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isGenerating ? 'Generating Test...' : 'Start Practice Test'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Progress Tracker Component
+const ProgressTracker = ({ student, onNavigate }) => {
+  const [dashboardData, setDashboardData] = useState(null);
+
+  useEffect(() => {
+    if (student) {
+      loadDashboardData();
+    }
+  }, [student]);
+
+  const loadDashboardData = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/api/dashboard/${student.student_id}`);
+      setDashboardData(response.data);
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    }
+  };
+
+  const subjects = ['math', 'physics', 'chemistry', 'biology', 'english', 'history', 'geography'];
+  
+  const getSubjectProgress = (subject) => {
+    // Simulate progress calculation
+    const baseProgress = (student?.level || 1) * 10;
+    const randomVariation = Math.random() * 40;
+    return Math.min(100, baseProgress + randomVariation);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex items-center mb-8">
+          <button
+            onClick={() => onNavigate('dashboard')}
+            className="text-indigo-600 hover:text-indigo-700 mr-4"
+          >
+            ← Back
+          </button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">📊 Progress Tracker</h1>
+            <p className="text-gray-600">Track your learning journey and achievements</p>
+          </div>
+        </div>
+
+        {/* Overall Progress */}
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Overall Progress</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="text-center">
+              <div className="text-4xl font-bold text-indigo-600 mb-2">{student?.level || 1}</div>
+              <div className="text-gray-600">Current Level</div>
+            </div>
+            <div className="text-center">
+              <div className="text-4xl font-bold text-green-600 mb-2">{student?.total_xp || 0}</div>
+              <div className="text-gray-600">Total XP</div>
+            </div>
+            <div className="text-center">
+              <div className="text-4xl font-bold text-orange-600 mb-2">{student?.streak_days || 0}</div>
+              <div className="text-gray-600">Day Streak</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Subject Progress */}
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Subject Mastery</h2>
+          <div className="space-y-4">
+            {subjects.map((subject) => {
+              const progress = getSubjectProgress(subject);
+              return (
+                <div key={subject} className="flex items-center space-x-4">
+                  <div className="w-12 text-2xl">
+                    {subject === 'math' && '🧮'}
+                    {subject === 'physics' && '⚡'}
+                    {subject === 'chemistry' && '🧪'}
+                    {subject === 'biology' && '🧬'}
+                    {subject === 'english' && '📖'}
+                    {subject === 'history' && '🏛️'}
+                    {subject === 'geography' && '🌍'}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-medium capitalize">{subject}</span>
+                      <span className="text-sm text-gray-600">{progress.toFixed(0)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-gradient-to-r from-indigo-500 to-purple-600 h-2 rounded-full transition-all duration-500"
+                        style={{ width: `${progress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Achievements */}
+        <div className="bg-white rounded-2xl shadow-lg p-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Achievements</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-4 bg-yellow-50 rounded-lg">
+              <div className="text-3xl mb-2">🥇</div>
+              <div className="font-medium">First Question</div>
+              <div className="text-sm text-gray-600">Asked your first question</div>
+            </div>
+            <div className="text-center p-4 bg-blue-50 rounded-lg">
+              <div className="text-3xl mb-2">🔥</div>
+              <div className="font-medium">Study Streak</div>
+              <div className="text-sm text-gray-600">3 days in a row</div>
+            </div>
+            <div className="text-center p-4 bg-green-50 rounded-lg">
+              <div className="text-3xl mb-2">🧮</div>
+              <div className="font-medium">Math Explorer</div>
+              <div className="text-sm text-gray-600">Studied math topics</div>
+            </div>
+            <div className="text-center p-4 bg-purple-50 rounded-lg">
+              <div className="text-3xl mb-2">🧘</div>
+              <div className="font-medium">Mindful Learner</div>
+              <div className="text-sm text-gray-600">Used mindfulness tools</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Main App Component
 function App() {
-  const [currentView, setCurrentView] = useState('setup'); // setup, dashboard, chat, mindfulness, practice, progress
+  const [currentView, setCurrentView] = useState('setup');
   const [currentSubject, setCurrentSubject] = useState(null);
   const [student, setStudent] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
@@ -576,129 +1066,15 @@ function App() {
     return <MindfulnessComponent student={student} onNavigate={navigate} />;
   }
 
+  if (currentView === 'practice') {
+    return <PracticeTestComponent student={student} onNavigate={navigate} />;
+  }
+
+  if (currentView === 'progress') {
+    return <ProgressTracker student={student} onNavigate={navigate} />;
+  }
+
   return <div>Feature coming soon!</div>;
 }
-
-// Student Setup Component
-const StudentSetup = ({ onComplete }) => {
-  const [formData, setFormData] = useState({
-    name: '',
-    grade_level: '9th',
-    subjects: [],
-    learning_goals: [],
-    study_hours_per_day: 2,
-    preferred_study_time: 'evening'
-  });
-
-  const subjects = ['math', 'physics', 'chemistry', 'biology', 'english', 'history', 'geography'];
-  const gradeOptions = ['6th', '7th', '8th', '9th', '10th', '11th', '12th'];
-
-  const handleSubjectToggle = (subject) => {
-    setFormData(prev => ({
-      ...prev,
-      subjects: prev.subjects.includes(subject)
-        ? prev.subjects.filter(s => s !== subject)
-        : [...prev.subjects, subject]
-    }));
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onComplete(formData);
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-white rounded-2xl shadow-lg p-8">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <span className="text-white font-bold text-2xl">K</span>
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to Project K!</h1>
-            <p className="text-gray-600">Let's set up your personalized learning profile</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Your Name</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
-              <select
-                value={formData.grade_level}
-                onChange={(e) => setFormData(prev => ({ ...prev, grade_level: e.target.value }))}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                {gradeOptions.map(grade => (
-                  <option key={grade} value={grade}>{grade} Grade</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Subjects to Study</label>
-              <div className="grid grid-cols-2 gap-3">
-                {subjects.map(subject => (
-                  <button
-                    key={subject}
-                    type="button"
-                    onClick={() => handleSubjectToggle(subject)}
-                    className={`p-3 rounded-lg border-2 transition-all duration-200 ${
-                      formData.subjects.includes(subject)
-                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="text-2xl mb-1">
-                      {subject === 'math' && '🧮'}
-                      {subject === 'physics' && '⚡'}
-                      {subject === 'chemistry' && '🧪'}
-                      {subject === 'biology' && '🧬'}
-                      {subject === 'english' && '📖'}
-                      {subject === 'history' && '🏛️'}
-                      {subject === 'geography' && '🌍'}
-                    </div>
-                    <div className="capitalize font-medium">{subject}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Daily Study Hours</label>
-              <select
-                value={formData.study_hours_per_day}
-                onChange={(e) => setFormData(prev => ({ ...prev, study_hours_per_day: parseInt(e.target.value) }))}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value={1}>1 hour</option>
-                <option value={2}>2 hours</option>
-                <option value={3}>3 hours</option>
-                <option value={4}>4+ hours</option>
-              </select>
-            </div>
-
-            <button
-              type="submit"
-              disabled={!formData.name || formData.subjects.length === 0}
-              className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white py-4 px-6 rounded-lg font-medium hover:from-indigo-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-            >
-              Start Learning Journey! 🚀
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 export default App;
