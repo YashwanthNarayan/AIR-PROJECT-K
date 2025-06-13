@@ -551,12 +551,12 @@ async def generate_practice_test(subject: Subject, topic: str, difficulty: Diffi
 
 # Mindfulness Routes
 @api_router.post("/mindfulness/session")
-async def start_mindfulness_session(student_id: str, activity_type: str, duration: int):
+async def start_mindfulness_session(input: dict):
     """Start a mindfulness session"""
     session = MindfulnessActivity(
-        student_id=student_id,
-        activity_type=activity_type,
-        duration=duration
+        student_id=input["student_id"],
+        activity_type=input["activity_type"],
+        duration=input["duration"]
     )
     await db.mindfulness_activities.insert_one(session.dict())
     return session
