@@ -1424,63 +1424,169 @@ const MindfulnessComponent = ({ student, onNavigate }) => {
   );
 };
 
-// Practice Test Component
+// Enhanced Practice Test Component
 const PracticeTestComponent = ({ student, onNavigate }) => {
   const [selectedSubject, setSelectedSubject] = useState('');
-  const [selectedTopic, setSelectedTopic] = useState('');
-  const [difficulty, setDifficulty] = useState('medium');
+  const [selectedTopics, setSelectedTopics] = useState([]);
+  const [numQuestions, setNumQuestions] = useState(5);
+  const [difficulty, setDifficulty] = useState('mixed');
   const [isGenerating, setIsGenerating] = useState(false);
   const [currentQuestions, setCurrentQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState({});
   const [showResults, setShowResults] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(null);
 
   const subjects = {
-    math: { name: 'Mathematics', topics: ['Algebra', 'Geometry', 'Calculus', 'Statistics'] },
-    physics: { name: 'Physics', topics: ['Mechanics', 'Thermodynamics', 'Optics', 'Electricity'] },
-    chemistry: { name: 'Chemistry', topics: ['Atomic Structure', 'Organic Chemistry', 'Acids & Bases'] },
-    biology: { name: 'Biology', topics: ['Cell Biology', 'Genetics', 'Ecology', 'Human Physiology'] }
+    math: { 
+      name: 'Mathematics', 
+      topics: ['Algebra', 'Geometry', 'Trigonometry', 'Calculus', 'Statistics', 'Probability', 'Number Theory', 'Linear Equations', 'Quadratic Equations'] 
+    },
+    physics: { 
+      name: 'Physics', 
+      topics: ['Mechanics', 'Thermodynamics', 'Waves', 'Optics', 'Electricity', 'Magnetism', 'Modern Physics', 'Kinematics', 'Dynamics'] 
+    },
+    chemistry: { 
+      name: 'Chemistry', 
+      topics: ['Atomic Structure', 'Organic Chemistry', 'Acids & Bases', 'Chemical Bonding', 'Periodic Table', 'Thermochemistry', 'Electrochemistry'] 
+    },
+    biology: { 
+      name: 'Biology', 
+      topics: ['Cell Biology', 'Genetics', 'Ecology', 'Human Physiology', 'Plant Biology', 'Evolution', 'Molecular Biology', 'Anatomy'] 
+    },
+    english: {
+      name: 'English',
+      topics: ['Grammar', 'Literature', 'Poetry', 'Essay Writing', 'Reading Comprehension', 'Creative Writing', 'Vocabulary', 'Sentence Structure']
+    },
+    history: {
+      name: 'History',
+      topics: ['Ancient History', 'Medieval History', 'Modern History', 'World Wars', 'Indian Independence', 'Civilizations', 'Cultural History']
+    },
+    geography: {
+      name: 'Geography',
+      topics: ['Physical Geography', 'Human Geography', 'Climate', 'Natural Resources', 'Population', 'Economic Geography', 'Environmental Geography']
+    }
   };
 
-  const sampleQuestions = {
-    math: [
-      {
-        id: '1',
-        question: 'Solve for x: 2x + 5 = 15',
-        options: ['x = 5', 'x = 10', 'x = 7.5', 'x = 2.5'],
-        correctAnswer: 'x = 5',
-        explanation: 'Subtract 5 from both sides: 2x = 10. Then divide by 2: x = 5.'
-      },
-      {
-        id: '2',
-        question: 'What is the area of a circle with radius 3?',
-        options: ['9π', '6π', '3π', '12π'],
-        correctAnswer: '9π',
-        explanation: 'Area = πr². With r = 3, Area = π(3)² = 9π.'
-      }
-    ],
-    physics: [
-      {
-        id: '1',
-        question: 'What is Newton\'s First Law of Motion?',
-        options: ['F = ma', 'An object at rest stays at rest unless acted upon by a force', 'For every action there is an equal and opposite reaction', 'None of the above'],
-        correctAnswer: 'An object at rest stays at rest unless acted upon by a force',
-        explanation: 'Newton\'s First Law states that an object at rest stays at rest and an object in motion stays in motion unless acted upon by an external force.'
-      }
-    ]
+  const handleTopicToggle = (topic) => {
+    setSelectedTopics(prev => 
+      prev.includes(topic)
+        ? prev.filter(t => t !== topic)
+        : [...prev, topic]
+    );
   };
 
-  const generatePracticeTest = () => {
+  const generatePracticeTest = async () => {
+    if (!selectedSubject || selectedTopics.length === 0) {
+      alert('Please select a subject and at least one topic');
+      return;
+    }
+
     setIsGenerating(true);
-    // Simulate API call
-    setTimeout(() => {
-      const questions = sampleQuestions[selectedSubject] || [];
-      setCurrentQuestions(questions);
+    try {
+      const response = await axios.post(`${API_BASE}/api/practice/generate-custom`, {
+        subject: selectedSubject,
+        topics: selectedTopics,
+        num_questions: numQuestions,
+        difficulty: difficulty
+      });
+
+      // Parse the AI-generated questions
+      try {
+        const questionsData = JSON.parse(response.data.questions);
+        setCurrentQuestions(questionsData);
+        setCurrentQuestionIndex(0);
+        setUserAnswers({});
+        setShowResults(false);
+        
+        // Set timer (2 minutes per question)
+        setTimeRemaining(numQuestions * 120);
+      } catch (parseError) {
+        console.error('Error parsing questions:', parseError);
+        // Fallback to sample questions
+        const sampleQuestions = generateSampleQuestions();
+        setCurrentQuestions(sampleQuestions);
+        setCurrentQuestionIndex(0);
+        setUserAnswers({});
+        setShowResults(false);
+        setTimeRemaining(numQuestions * 120);
+      }
+    } catch (error) {
+      console.error('Error generating practice test:', error);
+      alert('Failed to generate practice test. Using sample questions.');
+      const sampleQuestions = generateSampleQuestions();
+      setCurrentQuestions(sampleQuestions);
       setCurrentQuestionIndex(0);
       setUserAnswers({});
       setShowResults(false);
+      setTimeRemaining(numQuestions * 120);
+    } finally {
       setIsGenerating(false);
-    }, 1000);
+    }
+  };
+
+  const generateSampleQuestions = () => {
+    const sampleQuestions = {
+      math: [
+        {
+          id: '1',
+          question_text: 'Solve for x: 2x + 5 = 15',
+          question_type: 'mcq',
+          options: ['x = 5', 'x = 10', 'x = 7.5', 'x = 2.5'],
+          correct_answer: 'x = 5',
+          explanation: 'Subtract 5 from both sides: 2x = 10. Then divide by 2: x = 5.',
+          topic: 'Algebra',
+          difficulty: 'medium'
+        },
+        {
+          id: '2',
+          question_text: 'What is the area of a circle with radius 3?',
+          question_type: 'mcq',
+          options: ['9π', '6π', '3π', '12π'],
+          correct_answer: '9π',
+          explanation: 'Area = πr². With r = 3, Area = π(3)² = 9π.',
+          topic: 'Geometry',
+          difficulty: 'medium'
+        }
+      ],
+      physics: [
+        {
+          id: '1',
+          question_text: 'What is Newton\'s First Law of Motion?',
+          question_type: 'mcq',
+          options: ['F = ma', 'An object at rest stays at rest unless acted upon by a force', 'For every action there is an equal and opposite reaction', 'None of the above'],
+          correct_answer: 'An object at rest stays at rest unless acted upon by a force',
+          explanation: 'Newton\'s First Law states that an object at rest stays at rest and an object in motion stays in motion unless acted upon by an external force.',
+          topic: 'Mechanics',
+          difficulty: 'easy'
+        }
+      ]
+    };
+
+    return (sampleQuestions[selectedSubject] || []).slice(0, numQuestions);
+  };
+
+  // Timer effect
+  useEffect(() => {
+    let timer;
+    if (timeRemaining > 0 && currentQuestions.length > 0 && !showResults) {
+      timer = setInterval(() => {
+        setTimeRemaining(prev => {
+          if (prev <= 1) {
+            setShowResults(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [timeRemaining, currentQuestions.length, showResults]);
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleAnswerSelect = (questionId, answer) => {
@@ -1498,31 +1604,70 @@ const PracticeTestComponent = ({ student, onNavigate }) => {
     }
   };
 
+  const previousQuestion = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(prev => prev - 1);
+    }
+  };
+
   const calculateScore = () => {
     let correct = 0;
     currentQuestions.forEach(q => {
-      if (userAnswers[q.id] === q.correctAnswer) {
+      if (userAnswers[q.id] === q.correct_answer) {
         correct++;
       }
     });
     return (correct / currentQuestions.length) * 100;
   };
 
+  const resetTest = () => {
+    setCurrentQuestions([]);
+    setCurrentQuestionIndex(0);
+    setUserAnswers({});
+    setShowResults(false);
+    setTimeRemaining(null);
+    setSelectedSubject('');
+    setSelectedTopics([]);
+    setNumQuestions(5);
+    setDifficulty('mixed');
+  };
+
   if (showResults) {
     const score = calculateScore();
+    const correctAnswers = Math.round((score/100) * currentQuestions.length);
+    
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
         <div className="max-w-4xl mx-auto">
           <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
-            <div className="text-6xl mb-6">🎉</div>
+            <div className="text-6xl mb-6">
+              {score >= 80 ? '🎉' : score >= 60 ? '👍' : '💪'}
+            </div>
             <h2 className="text-3xl font-bold text-gray-900 mb-4">Test Complete!</h2>
             <div className="text-4xl font-bold text-indigo-600 mb-6">{score.toFixed(0)}%</div>
             <p className="text-lg text-gray-700 mb-8">
-              You scored {Math.round((score/100) * currentQuestions.length)} out of {currentQuestions.length} questions correctly!
+              You scored {correctAnswers} out of {currentQuestions.length} questions correctly!
             </p>
+            
+            {/* Performance Analysis */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+              <div className="bg-green-50 p-4 rounded-lg">
+                <div className="text-2xl font-bold text-green-600">{correctAnswers}</div>
+                <div className="text-sm text-green-800">Correct</div>
+              </div>
+              <div className="bg-red-50 p-4 rounded-lg">
+                <div className="text-2xl font-bold text-red-600">{currentQuestions.length - correctAnswers}</div>
+                <div className="text-sm text-red-800">Incorrect</div>
+              </div>
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600">{selectedTopics.length}</div>
+                <div className="text-sm text-blue-800">Topics Covered</div>
+              </div>
+            </div>
+
             <div className="space-x-4">
               <button
-                onClick={() => setCurrentQuestions([])}
+                onClick={resetTest}
                 className="bg-indigo-500 text-white px-6 py-3 rounded-lg hover:bg-indigo-600"
               >
                 Take Another Test
@@ -1542,43 +1687,88 @@ const PracticeTestComponent = ({ student, onNavigate }) => {
 
   if (currentQuestions.length > 0) {
     const currentQuestion = currentQuestions[currentQuestionIndex];
+    const progress = ((currentQuestionIndex + 1) / currentQuestions.length) * 100;
+    
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
         <div className="max-w-4xl mx-auto">
-          <div className="bg-white rounded-2xl shadow-lg p-8">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Practice Test</h2>
-              <div className="text-sm text-gray-600">
+          {/* Progress Bar */}
+          <div className="bg-white rounded-2xl shadow-lg p-4 mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium text-gray-700">
                 Question {currentQuestionIndex + 1} of {currentQuestions.length}
-              </div>
+              </span>
+              <span className="text-sm font-medium text-gray-700">
+                Time: {timeRemaining ? formatTime(timeRemaining) : '--:--'}
+              </span>
             </div>
-            
-            <div className="mb-8">
-              <h3 className="text-xl font-semibold text-gray-900 mb-6">{currentQuestion.question}</h3>
-              <div className="space-y-3">
-                {currentQuestion.options.map((option, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleAnswerSelect(currentQuestion.id, option)}
-                    className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
-                      userAnswers[currentQuestion.id] === option
-                        ? 'border-indigo-500 bg-indigo-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    {option}
-                  </button>
-                ))}
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full">
+                  {currentQuestion.topic} • {currentQuestion.difficulty}
+                </span>
+                <span className="text-sm text-gray-500">
+                  {currentQuestion.question_type.toUpperCase()}
+                </span>
               </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-6">{currentQuestion.question_text}</h3>
+              
+              {currentQuestion.question_type === 'mcq' && (
+                <div className="space-y-3">
+                  {currentQuestion.options.map((option, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleAnswerSelect(currentQuestion.id, option)}
+                      className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                        userAnswers[currentQuestion.id] === option
+                          ? 'border-indigo-500 bg-indigo-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <span className="font-medium mr-3">{String.fromCharCode(65 + index)}.</span>
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {currentQuestion.question_type === 'short_answer' && (
+                <textarea
+                  value={userAnswers[currentQuestion.id] || ''}
+                  onChange={(e) => handleAnswerSelect(currentQuestion.id, e.target.value)}
+                  placeholder="Enter your answer here..."
+                  className="w-full p-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  rows={4}
+                />
+              )}
             </div>
 
-            <button
-              onClick={nextQuestion}
-              disabled={!userAnswers[currentQuestion.id]}
-              className="w-full bg-indigo-500 text-white py-3 rounded-lg hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {currentQuestionIndex === currentQuestions.length - 1 ? 'Finish Test' : 'Next Question'}
-            </button>
+            <div className="flex justify-between">
+              <button
+                onClick={previousQuestion}
+                disabled={currentQuestionIndex === 0}
+                className="bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              
+              <button
+                onClick={nextQuestion}
+                disabled={!userAnswers[currentQuestion.id]}
+                className="bg-indigo-500 text-white px-6 py-3 rounded-lg hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {currentQuestionIndex === currentQuestions.length - 1 ? 'Finish Test' : 'Next Question'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1596,18 +1786,22 @@ const PracticeTestComponent = ({ student, onNavigate }) => {
             ← Back
           </button>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">📝 Practice Tests</h1>
-            <p className="text-gray-600">Test your knowledge with adaptive quizzes</p>
+            <h1 className="text-3xl font-bold text-gray-900">📝 Enhanced Practice Tests</h1>
+            <p className="text-gray-600">Customize your practice with multiple topics and question counts</p>
           </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-lg p-8">
           <div className="space-y-6">
+            {/* Subject Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
               <select
                 value={selectedSubject}
-                onChange={(e) => setSelectedSubject(e.target.value)}
+                onChange={(e) => {
+                  setSelectedSubject(e.target.value);
+                  setSelectedTopics([]);
+                }}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="">Choose a subject</option>
@@ -1617,22 +1811,56 @@ const PracticeTestComponent = ({ student, onNavigate }) => {
               </select>
             </div>
 
+            {/* Topic Selection */}
             {selectedSubject && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Topic</label>
-                <select
-                  value={selectedTopic}
-                  onChange={(e) => setSelectedTopic(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="">Choose a topic</option>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Topics (Select multiple topics)
+                </label>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {subjects[selectedSubject].topics.map((topic) => (
-                    <option key={topic} value={topic}>{topic}</option>
+                    <button
+                      key={topic}
+                      type="button"
+                      onClick={() => handleTopicToggle(topic)}
+                      className={`p-3 rounded-lg border-2 transition-all text-sm ${
+                        selectedTopics.includes(topic)
+                          ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      {topic}
+                    </button>
                   ))}
-                </select>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Selected: {selectedTopics.length} topic{selectedTopics.length !== 1 ? 's' : ''}
+                </p>
               </div>
             )}
 
+            {/* Number of Questions */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Number of Questions (5-50)
+              </label>
+              <input
+                type="range"
+                min="5"
+                max="50"
+                step="5"
+                value={numQuestions}
+                onChange={(e) => setNumQuestions(parseInt(e.target.value))}
+                className="w-full"
+              />
+              <div className="flex justify-between text-sm text-gray-600 mt-1">
+                <span>5</span>
+                <span className="font-medium">{numQuestions} questions</span>
+                <span>50</span>
+              </div>
+            </div>
+
+            {/* Difficulty */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Difficulty</label>
               <select
@@ -1643,12 +1871,27 @@ const PracticeTestComponent = ({ student, onNavigate }) => {
                 <option value="easy">Easy</option>
                 <option value="medium">Medium</option>
                 <option value="hard">Hard</option>
+                <option value="mixed">Mixed (Recommended)</option>
               </select>
             </div>
 
+            {/* Test Summary */}
+            {selectedSubject && selectedTopics.length > 0 && (
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h3 className="font-medium text-blue-900 mb-2">Test Summary:</h3>
+                <ul className="text-sm text-blue-800 space-y-1">
+                  <li>• Subject: {subjects[selectedSubject].name}</li>
+                  <li>• Topics: {selectedTopics.join(', ')}</li>
+                  <li>• Questions: {numQuestions}</li>
+                  <li>• Difficulty: {difficulty}</li>
+                  <li>• Estimated time: {Math.ceil(numQuestions * 2)} minutes</li>
+                </ul>
+              </div>
+            )}
+
             <button
               onClick={generatePracticeTest}
-              disabled={!selectedSubject || !selectedTopic || isGenerating}
+              disabled={!selectedSubject || selectedTopics.length === 0 || isGenerating}
               className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white py-4 px-6 rounded-lg font-medium hover:from-indigo-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isGenerating ? 'Generating Test...' : 'Start Practice Test'}
