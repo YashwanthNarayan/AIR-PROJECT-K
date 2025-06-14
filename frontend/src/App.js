@@ -512,9 +512,55 @@ const AuthPortal = ({ onAuthSuccess }) => {
   return null;
 };
 
-// Student Dashboard (Previous Implementation)
+// Student Dashboard (Enhanced with all new features)
 const StudentDashboard = ({ student, onNavigate, dashboardData, onLogout }) => {
+  const [notifications, setNotifications] = useState([]);
+  const [joinedClasses, setJoinedClasses] = useState([]);
+  const [todayEvents, setTodayEvents] = useState([]);
+  const [showJoinClass, setShowJoinClass] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
+
   const subjects = ['math', 'physics', 'chemistry', 'biology', 'english', 'history', 'geography'];
+
+  useEffect(() => {
+    if (dashboardData) {
+      setNotifications(dashboardData.notifications || []);
+      setJoinedClasses(dashboardData.joined_classes || []);
+      setTodayEvents(dashboardData.today_events || []);
+    }
+  }, [dashboardData]);
+
+  const handleJoinClass = async () => {
+    if (!joinCode.trim()) return;
+    
+    setIsJoining(true);
+    try {
+      const response = await axios.post(`${API_BASE}/api/student/join-class`, {
+        join_code: joinCode.toUpperCase()
+      });
+      alert('Successfully joined class!');
+      setJoinCode('');
+      setShowJoinClass(false);
+      // Refresh dashboard data
+      window.location.reload();
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Failed to join class');
+    } finally {
+      setIsJoining(false);
+    }
+  };
+
+  const markNotificationRead = async (notificationId) => {
+    try {
+      await axios.put(`${API_BASE}/api/student/notification/${notificationId}/read`);
+      setNotifications(prev => 
+        prev.map(n => n.notification_id === notificationId ? {...n, is_read: true} : n)
+      );
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
@@ -541,110 +587,300 @@ const StudentDashboard = ({ student, onNavigate, dashboardData, onLogout }) => {
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-          <div className="bg-white rounded-xl p-6 shadow-md">
-            <div className="flex items-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
-                <span className="text-2xl">📚</span>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-gray-900">{dashboardData?.stats?.subjects_studied || 0}</div>
-                <div className="text-sm text-gray-600">Subjects Studied</div>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl p-6 shadow-md">
-            <div className="flex items-center">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
-                <span className="text-2xl">💬</span>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-gray-900">{dashboardData?.stats?.total_messages || 0}</div>
-                <div className="text-sm text-gray-600">Questions Asked</div>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl p-6 shadow-md">
-            <div className="flex items-center">
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-4">
-                <span className="text-2xl">🏆</span>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-gray-900">{student?.level || 1}</div>
-                <div className="text-sm text-gray-600">Current Level</div>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl p-6 shadow-md">
-            <div className="flex items-center">
-              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mr-4">
-                <span className="text-2xl">🔥</span>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-gray-900">{student?.streak_days || 0}</div>
-                <div className="text-sm text-gray-600">Day Streak</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Subjects Grid */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Choose a Subject to Study</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-            {subjects.map((subject) => (
+        {/* Quick Actions Bar */}
+        <div className="bg-white rounded-2xl shadow-lg p-4 mb-6">
+          <div className="flex justify-between items-center">
+            <div className="flex space-x-4">
               <button
-                key={subject}
-                onClick={() => onNavigate('chat', subject)}
-                className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-6 rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 text-center"
+                onClick={() => onNavigate('practice')}
+                className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 flex items-center space-x-2"
               >
-                <div className="text-3xl mb-2">
-                  {subject === 'math' && '🧮'}
-                  {subject === 'physics' && '⚡'}
-                  {subject === 'chemistry' && '🧪'}
-                  {subject === 'biology' && '🧬'}
-                  {subject === 'english' && '📖'}
-                  {subject === 'history' && '🏛️'}
-                  {subject === 'geography' && '🌍'}
-                </div>
-                <div className="font-medium capitalize">{subject}</div>
+                <span>📝</span>
+                <span>Take Practice Test</span>
               </button>
-            ))}
+              <button
+                onClick={() => onNavigate('calendar')}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center space-x-2"
+              >
+                <span>📅</span>
+                <span>View Calendar</span>
+              </button>
+              <button
+                onClick={() => onNavigate('mindfulness')}
+                className="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 flex items-center space-x-2"
+              >
+                <span>🧘</span>
+                <span>Mindfulness</span>
+              </button>
+            </div>
+            <button
+              onClick={() => setShowJoinClass(true)}
+              className="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 flex items-center space-x-2"
+            >
+              <span>🏫</span>
+              <span>Join Class</span>
+            </button>
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <button
-            onClick={() => onNavigate('practice')}
-            className="bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 text-left"
-          >
-            <div className="text-3xl mb-3">📝</div>
-            <h3 className="font-semibold text-gray-900 mb-2">Practice Tests</h3>
-            <p className="text-sm text-gray-600">Take adaptive quizzes to test your knowledge</p>
-          </button>
-          <button
-            onClick={() => onNavigate('mindfulness')}
-            className="bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 text-left"
-          >
-            <div className="text-3xl mb-3">🧘</div>
-            <h3 className="font-semibold text-gray-900 mb-2">Mindfulness</h3>
-            <p className="text-sm text-gray-600">Breathing exercises and stress management</p>
-          </button>
-          <button
-            onClick={() => onNavigate('progress')}
-            className="bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 text-left"
-          >
-            <div className="text-3xl mb-3">📊</div>
-            <h3 className="font-semibold text-gray-900 mb-2">Progress Tracker</h3>
-            <p className="text-sm text-gray-600">View your learning progress and achievements</p>
-          </button>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="bg-white rounded-xl p-6 shadow-md">
+                <div className="flex items-center">
+                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
+                    <span className="text-2xl">📚</span>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900">{dashboardData?.stats?.subjects_studied || 0}</div>
+                    <div className="text-sm text-gray-600">Subjects Studied</div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl p-6 shadow-md">
+                <div className="flex items-center">
+                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
+                    <span className="text-2xl">💬</span>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900">{dashboardData?.stats?.total_messages || 0}</div>
+                    <div className="text-sm text-gray-600">Questions Asked</div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl p-6 shadow-md">
+                <div className="flex items-center">
+                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-4">
+                    <span className="text-2xl">🏆</span>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900">{student?.level || 1}</div>
+                    <div className="text-sm text-gray-600">Current Level</div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl p-6 shadow-md">
+                <div className="flex items-center">
+                  <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mr-4">
+                    <span className="text-2xl">🔥</span>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900">{student?.streak_days || 0}</div>
+                    <div className="text-sm text-gray-600">Day Streak</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Subjects Grid */}
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Choose a Subject to Study</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+                {subjects.map((subject) => (
+                  <button
+                    key={subject}
+                    onClick={() => onNavigate('chat', subject)}
+                    className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-6 rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 text-center"
+                  >
+                    <div className="text-3xl mb-2">
+                      {subject === 'math' && '🧮'}
+                      {subject === 'physics' && '⚡'}
+                      {subject === 'chemistry' && '🧪'}
+                      {subject === 'biology' && '🧬'}
+                      {subject === 'english' && '📖'}
+                      {subject === 'history' && '🏛️'}
+                      {subject === 'geography' && '🌍'}
+                    </div>
+                    <div className="font-medium capitalize">{subject}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* My Classes */}
+            {joinedClasses.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-lg p-6">
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">My Classes</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {joinedClasses.map((classroom) => (
+                    <div key={classroom.class_id} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="text-2xl">
+                          {classroom.subject === 'math' && '🧮'}
+                          {classroom.subject === 'physics' && '⚡'}
+                          {classroom.subject === 'chemistry' && '🧪'}
+                          {classroom.subject === 'biology' && '🧬'}
+                          {classroom.subject === 'english' && '📖'}
+                          {classroom.subject === 'history' && '🏛️'}
+                          {classroom.subject === 'geography' && '🌍'}
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900">{classroom.name}</h3>
+                          <p className="text-sm text-gray-600 capitalize">
+                            {classroom.subject} • Grade {classroom.grade_level}
+                          </p>
+                          <p className="text-xs text-gray-500">Join Code: {classroom.join_code}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right Column */}
+          <div className="space-y-6">
+            {/* Today's Schedule */}
+            {todayEvents.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-lg p-6">
+                <h3 className="text-xl font-bold text-gray-900 mb-4">📅 Today's Schedule</h3>
+                <div className="space-y-3">
+                  {todayEvents.map((event) => (
+                    <div key={event.event_id} className="p-3 bg-blue-50 rounded-lg">
+                      <div className="font-medium text-blue-900">{event.title}</div>
+                      <div className="text-sm text-blue-700">
+                        {new Date(event.start_time).toLocaleTimeString()} - {new Date(event.end_time).toLocaleTimeString()}
+                      </div>
+                      {event.subject && (
+                        <div className="text-xs text-blue-600 capitalize">{event.subject}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Notifications */}
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <h3 className="text-xl font-bold text-gray-900 mb-4">🔔 Notifications</h3>
+              <div className="space-y-3">
+                {notifications.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">No notifications yet</p>
+                ) : (
+                  notifications.slice(0, 5).map((notification) => (
+                    <div
+                      key={notification.notification_id}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        notification.is_read 
+                          ? 'bg-gray-50 border-gray-200' 
+                          : 'bg-blue-50 border-blue-200'
+                      }`}
+                      onClick={() => !notification.is_read && markNotificationRead(notification.notification_id)}
+                    >
+                      <div className="flex items-start space-x-3">
+                        <div className="text-lg">
+                          {notification.notification_type === 'teacher_message' && '👩‍🏫'}
+                          {notification.notification_type === 'assignment' && '📋'}
+                          {notification.notification_type === 'daily_practice' && '📝'}
+                          {notification.notification_type === 'achievement' && '🏆'}
+                          {notification.notification_type === 'reminder' && '⏰'}
+                        </div>
+                        <div className="flex-1">
+                          <div className={`font-medium ${notification.is_read ? 'text-gray-700' : 'text-blue-900'}`}>
+                            {notification.title}
+                          </div>
+                          <div className={`text-sm ${notification.is_read ? 'text-gray-600' : 'text-blue-700'}`}>
+                            {notification.message}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {new Date(notification.created_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                        {!notification.is_read && (
+                          <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <h3 className="text-xl font-bold text-gray-900 mb-4">⚡ Quick Actions</h3>
+              <div className="space-y-3">
+                <button
+                  onClick={() => onNavigate('practice')}
+                  className="w-full text-left p-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className="text-2xl">📝</span>
+                    <div>
+                      <div className="font-medium text-green-900">Take Practice Test</div>
+                      <div className="text-sm text-green-700">Test your knowledge</div>
+                    </div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => onNavigate('mindfulness')}
+                  className="w-full text-left p-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className="text-2xl">🧘</span>
+                    <div>
+                      <div className="font-medium text-purple-900">Mindfulness Break</div>
+                      <div className="text-sm text-purple-700">Relax and recharge</div>
+                    </div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => onNavigate('progress')}
+                  className="w-full text-left p-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className="text-2xl">📊</span>
+                    <div>
+                      <div className="font-medium text-blue-900">View Progress</div>
+                      <div className="text-sm text-blue-700">Track your achievements</div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
+
+        {/* Join Class Modal */}
+        {showJoinClass && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">Join a Class</h2>
+              <p className="text-gray-600 mb-6">Enter the 6-character join code provided by your teacher:</p>
+              
+              <input
+                type="text"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                placeholder="ABCD12"
+                maxLength={6}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center text-2xl font-mono mb-6"
+              />
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowJoinClass(false)}
+                  className="flex-1 bg-gray-500 text-white py-3 px-4 rounded-lg hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleJoinClass}
+                  disabled={isJoining || joinCode.length !== 6}
+                  className="flex-1 bg-indigo-500 text-white py-3 px-4 rounded-lg hover:bg-indigo-600 disabled:opacity-50"
+                >
+                  {isJoining ? 'Joining...' : 'Join Class'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
-};
 
 // Teacher Dashboard (Complete V3)
 const TeacherDashboard = ({ teacher, onLogout }) => {
