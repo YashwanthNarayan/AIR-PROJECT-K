@@ -167,27 +167,33 @@ backend:
 
   - task: "Multiple Subject Bots (V1 Feature)"
     implemented: true
-    working: "NA"
+    working: true
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Maintained all 7 subject bots (Math, Physics, Chemistry, Biology, English, History, Geography) with NCERT-based curriculum and Socratic teaching method."
+      - working: true
+        agent: "testing"
+        comment: "Chat session creation and message sending are working correctly with authentication. The system properly routes messages to the appropriate subject bot."
 
   - task: "Enhanced Central Brain Routing"
     implemented: true
-    working: "NA"
+    working: true
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Maintained intelligent routing system with authentication context and student profile integration."
+      - working: true
+        agent: "testing"
+        comment: "Central brain routing is working correctly with authentication. Chat history can be retrieved with proper authentication."
 
 frontend:
   - task: "V3 Authentication Portal"
