@@ -712,4 +712,6 @@ class TestProjectKV3Backend(unittest.TestCase):
             print(f"❌ Health check test failed: {str(e)}")
 
 if __name__ == "__main__":
+    # Run the V3 tests
+    print("\n==== TESTING PROJECT K V3 BACKEND ====\n")
     unittest.main(argv=['first-arg-is-ignored'], exit=False)
