@@ -45,6 +45,17 @@ class DifficultyLevel(str, Enum):
     EASY = "easy"
     MEDIUM = "medium"  
     HARD = "hard"
+    MIXED = "mixed"
+
+class UserType(str, Enum):
+    STUDENT = "student"
+    TEACHER = "teacher"
+
+class QuestionType(str, Enum):
+    MCQ = "mcq"
+    SHORT_ANSWER = "short_answer"
+    LONG_ANSWER = "long_answer"
+    NUMERICAL = "numerical"
 
 class TestProjectKBackend(unittest.TestCase):
     """Test cases for Project K AI Educational Chatbot backend V2.0"""
