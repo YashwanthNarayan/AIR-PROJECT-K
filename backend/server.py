@@ -1002,10 +1002,13 @@ async def get_teacher_dashboard(token_data: dict = Depends(verify_token)):
         all_student_ids.extend(cls.get('students', []))
     
     # Get student activity data
-    total_students = len(set(all_student_ids))
-    recent_activity = await db.chat_messages.find(
-        {"student_id": {"$in": all_student_ids}}
-    ).sort("timestamp", -1).limit(20).to_list(20)
+    total_students = len(set(all_student_ids)) if all_student_ids else 0
+    recent_activity = []
+    
+    if all_student_ids:
+        recent_activity = await db.chat_messages.find(
+            {"student_id": {"$in": all_student_ids}}
+        ).sort("timestamp", -1).limit(20).to_list(20)
     
     return {
         "profile": TeacherProfile(**profile),
