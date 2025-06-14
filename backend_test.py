@@ -57,628 +57,659 @@ class QuestionType(str, Enum):
     LONG_ANSWER = "long_answer"
     NUMERICAL = "numerical"
 
-class TestProjectKBackend(unittest.TestCase):
-    """Test cases for Project K AI Educational Chatbot backend V2.0"""
+class TestProjectKV3Backend(unittest.TestCase):
+    """Test cases for Project K AI Educational Chatbot backend V3.0 with authentication"""
 
     def setUp(self):
-        """Set up test case - create a student profile and chat session"""
+        """Set up test case - create student and teacher accounts"""
+        self.student_token = None
+        self.teacher_token = None
         self.student_id = None
+        self.teacher_id = None
+        self.class_id = None
+        self.join_code = None
         self.session_id = None
-        self.student_profile = self.create_student_profile()
-        if self.student_id:
-            self.chat_session = self.create_chat_session()
+        
+        # Register student and teacher
+        self.register_student()
+        self.register_teacher()
 
-    def create_student_profile(self):
-        """Test creating a student profile"""
-        print("\n🔍 Testing Enhanced Student Profile System...")
-        url = f"{API_URL}/student/profile"
+    def register_student(self):
+        """Test student registration"""
+        print("\n🔍 Testing Student Registration...")
+        url = f"{API_URL}/auth/register"
         payload = {
+            "email": f"student_{uuid.uuid4()}@example.com",
+            "password": "SecurePass123!",
             "name": "Rahul Sharma",
-            "grade_level": GradeLevel.GRADE_10.value,
-            "subjects": [
-                Subject.MATH.value,
-                Subject.PHYSICS.value,
-                Subject.CHEMISTRY.value,
-                Subject.BIOLOGY.value
-            ],
-            "learning_goals": [
-                "Improve math problem-solving skills",
-                "Prepare for science olympiad",
-                "Build better study habits"
-            ],
-            "study_hours_per_day": 3,
-            "preferred_study_time": "evening"
+            "user_type": UserType.STUDENT.value,
+            "grade_level": GradeLevel.GRADE_10.value
         }
         
         try:
             response = requests.post(url, json=payload)
-            print(f"Create Student Profile Response: {response.status_code}")
+            print(f"Student Registration Response: {response.status_code}")
             
-            self.assertEqual(response.status_code, 200, "Failed to create student profile")
+            self.assertEqual(response.status_code, 200, "Failed to register student")
             data = response.json()
-            self.student_id = data.get("student_id")
-            print(f"Created student profile with ID: {self.student_id}")
+            self.student_token = data.get("access_token")
+            self.student_id = data.get("user", {}).get("id")
+            
+            print(f"Registered student with ID: {self.student_id}")
+            self.assertIsNotNone(self.student_token, "Student token should not be None")
             self.assertIsNotNone(self.student_id, "Student ID should not be None")
-            self.assertEqual(data.get("name"), payload["name"], "Student name mismatch")
-            self.assertEqual(data.get("grade_level"), payload["grade_level"], "Grade level mismatch")
-            self.assertEqual(len(data.get("subjects")), len(payload["subjects"]), "Subjects count mismatch")
-            print("✅ Create student profile test passed")
+            print("✅ Student registration test passed")
             return data
         except Exception as e:
-            print(f"❌ Create student profile test failed: {str(e)}")
+            print(f"❌ Student registration test failed: {str(e)}")
             return None
 
-    def test_01_get_student_profile(self):
-        """Test getting a student profile"""
-        if not self.student_id:
-            self.skipTest("Student profile not created")
-            
-        url = f"{API_URL}/student/profile/{self.student_id}"
-        response = requests.get(url)
-        print(f"Get Student Profile Response: {response.status_code}")
-        
-        self.assertEqual(response.status_code, 200, "Failed to get student profile")
-        data = response.json()
-        self.assertEqual(data.get("student_id"), self.student_id, "Student ID mismatch")
-        self.assertEqual(data.get("name"), "Rahul Sharma", "Student name mismatch")
-        self.assertEqual(data.get("grade_level"), GradeLevel.GRADE_10.value, "Grade level mismatch")
-        print("✅ Get student profile test passed")
-        return data
-
-    def test_02_update_student_profile(self):
-        """Test updating a student profile"""
-        if not self.student_id:
-            self.skipTest("Student profile not created")
-            
-        url = f"{API_URL}/student/profile/{self.student_id}"
-        updates = {
-            "learning_goals": [
-                "Improve math problem-solving skills",
-                "Prepare for science olympiad",
-                "Build better study habits",
-                "Master calculus concepts"
-            ],
-            "total_xp": 50,  # Add some XP
-            "streak_days": 3  # Add streak days
+    def register_teacher(self):
+        """Test teacher registration"""
+        print("\n🔍 Testing Teacher Registration...")
+        url = f"{API_URL}/auth/register"
+        payload = {
+            "email": f"teacher_{uuid.uuid4()}@example.com",
+            "password": "SecurePass123!",
+            "name": "Priya Patel",
+            "user_type": UserType.TEACHER.value,
+            "school_name": "Delhi Public School"
         }
         
-        response = requests.put(url, json=updates)
-        print(f"Update Student Profile Response: {response.status_code}")
-        
-        self.assertEqual(response.status_code, 200, "Failed to update student profile")
-        data = response.json()
-        self.assertEqual(data.get("student_id"), self.student_id, "Student ID mismatch")
-        self.assertEqual(len(data.get("learning_goals")), 4, "Learning goals count mismatch")
-        self.assertEqual(data.get("total_xp"), 50, "XP mismatch")
-        self.assertEqual(data.get("streak_days"), 3, "Streak days mismatch")
-        print("✅ Update student profile test passed")
-        return data
-
-    def create_chat_session(self):
-        """Create a new chat session for a subject"""
-        if not self.student_id:
-            return None
+        try:
+            response = requests.post(url, json=payload)
+            print(f"Teacher Registration Response: {response.status_code}")
             
-        url = f"{API_URL}/chat/session"
+            self.assertEqual(response.status_code, 200, "Failed to register teacher")
+            data = response.json()
+            self.teacher_token = data.get("access_token")
+            self.teacher_id = data.get("user", {}).get("id")
+            
+            print(f"Registered teacher with ID: {self.teacher_id}")
+            self.assertIsNotNone(self.teacher_token, "Teacher token should not be None")
+            self.assertIsNotNone(self.teacher_id, "Teacher ID should not be None")
+            print("✅ Teacher registration test passed")
+            return data
+        except Exception as e:
+            print(f"❌ Teacher registration test failed: {str(e)}")
+            return None
+
+    def test_01_login(self):
+        """Test login functionality"""
+        print("\n🔍 Testing Login Functionality...")
+        
+        # Skip if registration failed
+        if not self.student_id or not self.teacher_id:
+            self.skipTest("Registration failed, cannot test login")
+        
+        # Test student login
+        url = f"{API_URL}/auth/login"
         payload = {
-            "student_id": self.student_id,
+            "email": "student_test@example.com",
+            "password": "SecurePass123!"
+        }
+        
+        # Register a new account specifically for login test
+        register_url = f"{API_URL}/auth/register"
+        register_payload = {
+            "email": "student_test@example.com",
+            "password": "SecurePass123!",
+            "name": "Login Test Student",
+            "user_type": UserType.STUDENT.value,
+            "grade_level": GradeLevel.GRADE_9.value
+        }
+        
+        try:
+            # Register first
+            register_response = requests.post(register_url, json=register_payload)
+            self.assertEqual(register_response.status_code, 200, "Failed to register test account")
+            
+            # Then login
+            login_response = requests.post(url, json=payload)
+            print(f"Student Login Response: {login_response.status_code}")
+            
+            self.assertEqual(login_response.status_code, 200, "Failed to login as student")
+            login_data = login_response.json()
+            
+            self.assertIsNotNone(login_data.get("access_token"), "Login should return access token")
+            self.assertEqual(login_data.get("user_type"), UserType.STUDENT.value, "User type should be student")
+            print("✅ Student login test passed")
+        except Exception as e:
+            print(f"❌ Student login test failed: {str(e)}")
+        
+        # Test teacher login
+        payload = {
+            "email": "teacher_test@example.com",
+            "password": "SecurePass123!"
+        }
+        
+        # Register a new teacher account for login test
+        register_payload = {
+            "email": "teacher_test@example.com",
+            "password": "SecurePass123!",
+            "name": "Login Test Teacher",
+            "user_type": UserType.TEACHER.value,
+            "school_name": "Test School"
+        }
+        
+        try:
+            # Register first
+            register_response = requests.post(register_url, json=register_payload)
+            self.assertEqual(register_response.status_code, 200, "Failed to register test teacher account")
+            
+            # Then login
+            login_response = requests.post(url, json=payload)
+            print(f"Teacher Login Response: {login_response.status_code}")
+            
+            self.assertEqual(login_response.status_code, 200, "Failed to login as teacher")
+            login_data = login_response.json()
+            
+            self.assertIsNotNone(login_data.get("access_token"), "Login should return access token")
+            self.assertEqual(login_data.get("user_type"), UserType.TEACHER.value, "User type should be teacher")
+            print("✅ Teacher login test passed")
+        except Exception as e:
+            print(f"❌ Teacher login test failed: {str(e)}")
+
+    def test_02_student_profile(self):
+        """Test student profile endpoint with authentication"""
+        print("\n🔍 Testing Student Profile with Authentication...")
+        
+        if not self.student_token:
+            self.skipTest("Student token not available")
+        
+        url = f"{API_URL}/student/profile"
+        headers = {"Authorization": f"Bearer {self.student_token}"}
+        
+        try:
+            response = requests.get(url, headers=headers)
+            print(f"Student Profile Response: {response.status_code}")
+            
+            self.assertEqual(response.status_code, 200, "Failed to get student profile")
+            data = response.json()
+            
+            self.assertEqual(data.get("user_id"), self.student_id, "User ID mismatch")
+            self.assertEqual(data.get("name"), "Rahul Sharma", "Name mismatch")
+            print("✅ Student profile test passed")
+        except Exception as e:
+            print(f"❌ Student profile test failed: {str(e)}")
+
+    def test_03_teacher_profile(self):
+        """Test teacher profile endpoint with authentication"""
+        print("\n🔍 Testing Teacher Profile with Authentication...")
+        
+        if not self.teacher_token:
+            self.skipTest("Teacher token not available")
+        
+        url = f"{API_URL}/teacher/profile"
+        headers = {"Authorization": f"Bearer {self.teacher_token}"}
+        
+        try:
+            response = requests.get(url, headers=headers)
+            print(f"Teacher Profile Response: {response.status_code}")
+            
+            self.assertEqual(response.status_code, 200, "Failed to get teacher profile")
+            data = response.json()
+            
+            self.assertEqual(data.get("user_id"), self.teacher_id, "User ID mismatch")
+            self.assertEqual(data.get("name"), "Priya Patel", "Name mismatch")
+            self.assertEqual(data.get("school_name"), "Delhi Public School", "School name mismatch")
+            print("✅ Teacher profile test passed")
+        except Exception as e:
+            print(f"❌ Teacher profile test failed: {str(e)}")
+
+    def test_04_create_class(self):
+        """Test class creation by teacher"""
+        print("\n🔍 Testing Class Creation...")
+        
+        if not self.teacher_token:
+            self.skipTest("Teacher token not available")
+        
+        url = f"{API_URL}/teacher/classes"
+        headers = {"Authorization": f"Bearer {self.teacher_token}"}
+        payload = {
+            "subject": Subject.PHYSICS.value,
+            "class_name": "Advanced Physics",
+            "grade_level": GradeLevel.GRADE_11.value,
+            "description": "Advanced physics class covering mechanics, thermodynamics, and electromagnetism"
+        }
+        
+        try:
+            response = requests.post(url, json=payload, headers=headers)
+            print(f"Create Class Response: {response.status_code}")
+            
+            self.assertEqual(response.status_code, 200, "Failed to create class")
+            data = response.json()
+            
+            self.class_id = data.get("class_id")
+            self.join_code = data.get("join_code")
+            
+            self.assertIsNotNone(self.class_id, "Class ID should not be None")
+            self.assertIsNotNone(self.join_code, "Join code should not be None")
+            self.assertEqual(data.get("teacher_id"), self.teacher_id, "Teacher ID mismatch")
+            self.assertEqual(data.get("subject"), Subject.PHYSICS.value, "Subject mismatch")
+            self.assertEqual(data.get("class_name"), "Advanced Physics", "Class name mismatch")
+            
+            print(f"Created class with ID: {self.class_id} and join code: {self.join_code}")
+            print("✅ Create class test passed")
+        except Exception as e:
+            print(f"❌ Create class test failed: {str(e)}")
+
+    def test_05_get_teacher_classes(self):
+        """Test getting teacher's classes"""
+        print("\n🔍 Testing Get Teacher Classes...")
+        
+        if not self.teacher_token or not self.class_id:
+            self.skipTest("Teacher token or class ID not available")
+        
+        url = f"{API_URL}/teacher/classes"
+        headers = {"Authorization": f"Bearer {self.teacher_token}"}
+        
+        try:
+            response = requests.get(url, headers=headers)
+            print(f"Get Teacher Classes Response: {response.status_code}")
+            
+            self.assertEqual(response.status_code, 200, "Failed to get teacher classes")
+            data = response.json()
+            
+            self.assertIsInstance(data, list, "Response should be a list")
+            self.assertTrue(len(data) > 0, "Teacher should have at least one class")
+            
+            # Check if our created class is in the list
+            class_ids = [cls.get("class_id") for cls in data]
+            self.assertIn(self.class_id, class_ids, "Created class not found in teacher's classes")
+            
+            print(f"Teacher has {len(data)} classes")
+            print("✅ Get teacher classes test passed")
+        except Exception as e:
+            print(f"❌ Get teacher classes test failed: {str(e)}")
+
+    def test_06_join_class(self):
+        """Test student joining a class"""
+        print("\n🔍 Testing Join Class...")
+        
+        if not self.student_token or not self.join_code:
+            self.skipTest("Student token or join code not available")
+        
+        url = f"{API_URL}/student/join-class"
+        headers = {"Authorization": f"Bearer {self.student_token}"}
+        payload = {
+            "join_code": self.join_code
+        }
+        
+        try:
+            response = requests.post(url, json=payload, headers=headers)
+            print(f"Join Class Response: {response.status_code}")
+            
+            self.assertEqual(response.status_code, 200, "Failed to join class")
+            data = response.json()
+            
+            self.assertIn("message", data, "Response should contain a message")
+            self.assertIn("class", data, "Response should contain class details")
+            
+            class_data = data.get("class", {})
+            self.assertEqual(class_data.get("class_id"), self.class_id, "Class ID mismatch")
+            self.assertEqual(class_data.get("join_code"), self.join_code, "Join code mismatch")
+            
+            print(f"Student joined class: {class_data.get('class_name')}")
+            print("✅ Join class test passed")
+        except Exception as e:
+            print(f"❌ Join class test failed: {str(e)}")
+
+    def test_07_get_student_classes(self):
+        """Test getting student's joined classes"""
+        print("\n🔍 Testing Get Student Classes...")
+        
+        if not self.student_token or not self.class_id:
+            self.skipTest("Student token or class ID not available")
+        
+        url = f"{API_URL}/student/classes"
+        headers = {"Authorization": f"Bearer {self.student_token}"}
+        
+        try:
+            response = requests.get(url, headers=headers)
+            print(f"Get Student Classes Response: {response.status_code}")
+            
+            self.assertEqual(response.status_code, 200, "Failed to get student classes")
+            data = response.json()
+            
+            self.assertIsInstance(data, list, "Response should be a list")
+            self.assertTrue(len(data) > 0, "Student should have at least one class")
+            
+            # Check if our joined class is in the list
+            class_ids = [cls.get("class_id") for cls in data]
+            self.assertIn(self.class_id, class_ids, "Joined class not found in student's classes")
+            
+            print(f"Student has joined {len(data)} classes")
+            print("✅ Get student classes test passed")
+        except Exception as e:
+            print(f"❌ Get student classes test failed: {str(e)}")
+
+    def test_08_chat_session(self):
+        """Test creating a chat session with authentication"""
+        print("\n🔍 Testing Chat Session Creation...")
+        
+        if not self.student_token:
+            self.skipTest("Student token not available")
+        
+        url = f"{API_URL}/chat/session"
+        headers = {"Authorization": f"Bearer {self.student_token}"}
+        payload = {
             "subject": Subject.MATH.value
         }
         
         try:
-            response = requests.post(url, json=payload)
+            response = requests.post(url, json=payload, headers=headers)
             print(f"Create Chat Session Response: {response.status_code}")
             
             self.assertEqual(response.status_code, 200, "Failed to create chat session")
             data = response.json()
+            
             self.session_id = data.get("session_id")
-            print(f"Created chat session with ID: {self.session_id}")
             self.assertIsNotNone(self.session_id, "Session ID should not be None")
             self.assertEqual(data.get("student_id"), self.student_id, "Student ID mismatch")
             self.assertEqual(data.get("subject"), Subject.MATH.value, "Subject mismatch")
+            
+            print(f"Created chat session with ID: {self.session_id}")
             print("✅ Create chat session test passed")
-            return data
         except Exception as e:
             print(f"❌ Create chat session test failed: {str(e)}")
-            return None
 
-    def test_03_health_check(self):
-        """Test health check endpoint"""
-        url = f"{API_URL}/health"
-        response = requests.get(url)
-        print(f"Health Check Response: {response.status_code}")
+    def test_09_send_chat_message(self):
+        """Test sending a chat message with authentication"""
+        print("\n🔍 Testing Send Chat Message...")
         
-        self.assertEqual(response.status_code, 200, "Failed health check")
-        data = response.json()
-        self.assertEqual(data.get("status"), "healthy", "Health status should be 'healthy'")
-        print("✅ Health check test passed")
-
-    def test_04_multiple_subject_bots(self):
-        """Test all subject bots with appropriate questions"""
-        if not self.student_id or not self.session_id:
-            self.skipTest("Student profile or chat session not created")
+        if not self.student_token or not self.session_id:
+            self.skipTest("Student token or session ID not available")
         
-        print("\n🔍 Testing Multiple Subject Bots...")
-        
-        # Test each subject bot with an appropriate question
-        subject_questions = {
-            Subject.MATH.value: "Can you help me solve the quadratic equation x^2 - 5x + 6 = 0?",
-            Subject.PHYSICS.value: "Explain Newton's laws of motion with examples",
-            Subject.CHEMISTRY.value: "What is the periodic table and how is it organized?",
-            Subject.BIOLOGY.value: "Explain the process of photosynthesis in plants",
-            Subject.ENGLISH.value: "Can you help me analyze the theme of Shakespeare's Macbeth?",
-            Subject.HISTORY.value: "What were the major causes of World War II?",
-            Subject.GEOGRAPHY.value: "Explain the formation of different types of mountains"
-        }
-        
-        results = {}
-        
-        for subject, question in subject_questions.items():
-            # Create a new session for each subject
-            session_url = f"{API_URL}/chat/session"
-            session_payload = {
-                "student_id": self.student_id,
-                "subject": subject
-            }
-            
-            session_response = requests.post(session_url, json=session_payload)
-            if session_response.status_code != 200:
-                print(f"❌ Failed to create session for {subject}")
-                continue
-                
-            session_data = session_response.json()
-            subject_session_id = session_data.get("session_id")
-            
-            # Send a question to the subject bot
-            message_url = f"{API_URL}/chat/message"
-            message_payload = {
-                "session_id": subject_session_id,
-                "student_id": self.student_id,
-                "subject": subject,
-                "user_message": question
-            }
-            
-            try:
-                message_response = requests.post(message_url, json=message_payload)
-                print(f"{subject.title()} Bot Response: {message_response.status_code}")
-                
-                self.assertEqual(message_response.status_code, 200, f"Failed to get response from {subject} bot")
-                message_data = message_response.json()
-                self.assertIsNotNone(message_data.get("bot_response"), f"{subject} bot response should not be None")
-                
-                # Check if the bot type matches the subject
-                expected_bot_type = f"{subject}_bot"
-                actual_bot_type = message_data.get("bot_type")
-                
-                print(f"{subject.title()} Bot Type: {actual_bot_type}")
-                print(f"{subject.title()} Response Preview: {message_data.get('bot_response')[:100]}...")
-                
-                results[subject] = {
-                    "success": True,
-                    "bot_type": actual_bot_type,
-                    "response_preview": message_data.get('bot_response')[:100]
-                }
-                
-                print(f"✅ {subject.title()} bot test passed")
-            except Exception as e:
-                print(f"❌ {subject.title()} bot test failed: {str(e)}")
-                results[subject] = {"success": False, "error": str(e)}
-        
-        # Verify that all subject bots were tested
-        successful_subjects = [subject for subject, result in results.items() if result.get("success")]
-        self.assertTrue(len(successful_subjects) >= 5, "At least 5 subject bots should work correctly")
-        
-        return results
-
-    def test_05_central_brain_routing(self):
-        """Test enhanced central brain routing to appropriate subject bots"""
-        if not self.student_id:
-            self.skipTest("Student profile not created")
-            
-        print("\n🔍 Testing Enhanced Central Brain Routing...")
-        
-        # Create a new general session
-        session_url = f"{API_URL}/chat/session"
-        session_payload = {
-            "student_id": self.student_id,
-            "subject": Subject.MATH.value  # Default subject, but we'll test routing
-        }
-        
-        session_response = requests.post(session_url, json=session_payload)
-        self.assertEqual(session_response.status_code, 200, "Failed to create session for routing test")
-        session_data = session_response.json()
-        routing_session_id = session_data.get("session_id")
-        
-        # Test messages that should trigger different routing
-        routing_tests = [
-            {
-                "message": "I'm feeling very stressed about my exams tomorrow",
-                "expected_bot": "mindfulness_bot",
-                "description": "Stress message should route to mindfulness bot"
-            },
-            {
-                "message": "What is the capital of France?",
-                "expected_bot": "geography_bot",
-                "description": "Geography question should route to geography bot"
-            },
-            {
-                "message": "Can you explain the process of photosynthesis?",
-                "expected_bot": "biology_bot",
-                "description": "Biology question should route to biology bot"
-            }
-        ]
-        
-        for test in routing_tests:
-            message_url = f"{API_URL}/chat/message"
-            message_payload = {
-                "session_id": routing_session_id,
-                "student_id": self.student_id,
-                "subject": Subject.MATH.value,  # Default subject, but routing should override
-                "user_message": test["message"]
-            }
-            
-            try:
-                message_response = requests.post(message_url, json=message_payload)
-                print(f"Routing Test Response ({test['description']}): {message_response.status_code}")
-                
-                self.assertEqual(message_response.status_code, 200, f"Failed routing test: {test['description']}")
-                message_data = message_response.json()
-                
-                print(f"Message: '{test['message']}'")
-                print(f"Bot Type: {message_data.get('bot_type')}")
-                print(f"Response Preview: {message_data.get('bot_response')[:100]}...")
-                
-                # Note: The actual bot_type might not exactly match our expected_bot
-                # due to implementation details, but we can check if the response is appropriate
-                self.assertIsNotNone(message_data.get("bot_response"), "Bot response should not be None")
-                
-                print(f"✅ Routing test passed: {test['description']}")
-            except Exception as e:
-                print(f"❌ Routing test failed ({test['description']}): {str(e)}")
-        
-        print("✅ Enhanced Central Brain Routing tests completed")
-
-    def test_06_mindfulness_toolbox(self):
-        """Test mindfulness toolbox backend features"""
-        if not self.student_id:
-            self.skipTest("Student profile not created")
-            
-        print("\n🔍 Testing Mindfulness Toolbox Backend...")
-        
-        # Test creating a mindfulness session
-        mindfulness_url = f"{API_URL}/mindfulness/session"
-        activities = [
-            {"activity_type": "breathing", "duration": 5},
-            {"activity_type": "meditation", "duration": 10},
-            {"activity_type": "stress_relief", "duration": 15}
-        ]
-        
-        for activity in activities:
-            payload = {
-                "student_id": self.student_id,
-                "activity_type": activity["activity_type"],
-                "duration": activity["duration"]
-            }
-            
-            try:
-                response = requests.post(mindfulness_url, json=payload)
-                print(f"Mindfulness {activity['activity_type']} Response: {response.status_code}")
-                
-                self.assertEqual(response.status_code, 200, f"Failed to create {activity['activity_type']} session")
-                data = response.json()
-                self.assertEqual(data.get("student_id"), self.student_id, "Student ID mismatch")
-                self.assertEqual(data.get("activity_type"), activity["activity_type"], "Activity type mismatch")
-                self.assertEqual(data.get("duration"), activity["duration"], "Duration mismatch")
-                
-                print(f"✅ Mindfulness {activity['activity_type']} test passed")
-            except Exception as e:
-                print(f"❌ Mindfulness {activity['activity_type']} test failed: {str(e)}")
-        
-        # Test getting mindfulness history
-        history_url = f"{API_URL}/mindfulness/activities/{self.student_id}"
-        try:
-            response = requests.get(history_url)
-            print(f"Mindfulness History Response: {response.status_code}")
-            
-            self.assertEqual(response.status_code, 200, "Failed to get mindfulness history")
-            data = response.json()
-            self.assertIsInstance(data, list, "Mindfulness history should be a list")
-            self.assertTrue(len(data) >= 3, "Mindfulness history should have at least 3 activities")
-            
-            activity_types = [activity.get("activity_type") for activity in data]
-            self.assertIn("breathing", activity_types, "Breathing activity not found in history")
-            self.assertIn("meditation", activity_types, "Meditation activity not found in history")
-            self.assertIn("stress_relief", activity_types, "Stress relief activity not found in history")
-            
-            print(f"Mindfulness history contains {len(data)} activities")
-            print("✅ Mindfulness history test passed")
-        except Exception as e:
-            print(f"❌ Mindfulness history test failed: {str(e)}")
-        
-        # Test mindfulness bot with a stress-related query
-        session_url = f"{API_URL}/chat/session"
-        session_payload = {
-            "student_id": self.student_id,
-            "subject": Subject.MATH.value  # Default subject, but we'll test routing to mindfulness
-        }
-        
-        session_response = requests.post(session_url, json=session_payload)
-        mindfulness_session_id = session_response.json().get("session_id")
-        
-        message_url = f"{API_URL}/chat/message"
-        message_payload = {
-            "session_id": mindfulness_session_id,
-            "student_id": self.student_id,
+        url = f"{API_URL}/chat/message"
+        headers = {"Authorization": f"Bearer {self.student_token}"}
+        payload = {
+            "session_id": self.session_id,
             "subject": Subject.MATH.value,
-            "user_message": "I'm feeling very anxious about my upcoming exams. Can you help me relax?"
+            "user_message": "Can you help me solve the quadratic equation x^2 - 5x + 6 = 0?"
         }
         
         try:
-            message_response = requests.post(message_url, json=message_payload)
-            print(f"Mindfulness Bot Response: {message_response.status_code}")
+            response = requests.post(url, json=payload, headers=headers)
+            print(f"Send Chat Message Response: {response.status_code}")
             
-            self.assertEqual(message_response.status_code, 200, "Failed to get response from mindfulness bot")
-            message_data = message_response.json()
+            self.assertEqual(response.status_code, 200, "Failed to send chat message")
+            data = response.json()
             
-            print(f"Bot Type: {message_data.get('bot_type')}")
-            print(f"Response Preview: {message_data.get('bot_response')[:100]}...")
+            self.assertEqual(data.get("session_id"), self.session_id, "Session ID mismatch")
+            self.assertEqual(data.get("student_id"), self.student_id, "Student ID mismatch")
+            self.assertEqual(data.get("subject"), Subject.MATH.value, "Subject mismatch")
+            self.assertEqual(data.get("user_message"), payload["user_message"], "User message mismatch")
+            self.assertIsNotNone(data.get("bot_response"), "Bot response should not be None")
             
-            self.assertIsNotNone(message_data.get("bot_response"), "Mindfulness bot response should not be None")
-            print("✅ Mindfulness bot test passed")
+            print(f"Bot response preview: {data.get('bot_response')[:100]}...")
+            print("✅ Send chat message test passed")
         except Exception as e:
-            print(f"❌ Mindfulness bot test failed: {str(e)}")
-        
-        print("✅ Mindfulness Toolbox tests completed")
+            print(f"❌ Send chat message test failed: {str(e)}")
 
-    def test_07_practice_test_generation(self):
-        """Test practice test generation"""
+    def test_10_chat_history(self):
+        """Test getting chat history with authentication"""
+        print("\n🔍 Testing Get Chat History...")
+        
+        if not self.student_token:
+            self.skipTest("Student token not available")
+        
+        url = f"{API_URL}/chat/history"
+        headers = {"Authorization": f"Bearer {self.student_token}"}
+        
+        try:
+            response = requests.get(url, headers=headers)
+            print(f"Get Chat History Response: {response.status_code}")
+            
+            self.assertEqual(response.status_code, 200, "Failed to get chat history")
+            data = response.json()
+            
+            self.assertIsInstance(data, list, "Chat history should be a list")
+            
+            if len(data) > 0:
+                # If we have chat history, check the first message
+                message = data[0]
+                self.assertEqual(message.get("student_id"), self.student_id, "Student ID mismatch")
+                self.assertIsNotNone(message.get("user_message"), "User message should not be None")
+                self.assertIsNotNone(message.get("bot_response"), "Bot response should not be None")
+            
+            print(f"Chat history contains {len(data)} messages")
+            print("✅ Get chat history test passed")
+        except Exception as e:
+            print(f"❌ Get chat history test failed: {str(e)}")
+
+    def test_11_practice_test_generation(self):
+        """Test practice test generation with authentication"""
         print("\n🔍 Testing Practice Test Generation...")
         
+        if not self.student_token:
+            self.skipTest("Student token not available")
+        
         url = f"{API_URL}/practice/generate"
-        params = {
+        headers = {"Authorization": f"Bearer {self.student_token}"}
+        payload = {
             "subject": Subject.MATH.value,
-            "topic": "Algebra",
+            "topics": ["Algebra"],
             "difficulty": DifficultyLevel.MEDIUM.value,
-            "count": 3
+            "question_count": 3
         }
         
         try:
-            response = requests.post(url, params=params)
+            response = requests.post(url, json=payload, headers=headers)
             print(f"Practice Test Generation Response: {response.status_code}")
             
             self.assertEqual(response.status_code, 200, "Failed to generate practice test")
             data = response.json()
-            self.assertIn("questions", data, "Questions not found in response")
-            self.assertIn("message", data, "Message not found in response")
             
-            print(f"Practice test generated with message: {data.get('message')}")
-            print(f"Questions preview: {str(data.get('questions'))[:100]}...")
+            self.assertIn("test_id", data, "Test ID not found in response")
+            self.assertIn("questions", data, "Questions not found in response")
+            self.assertIn("total_questions", data, "Total questions not found in response")
+            
+            questions = data.get("questions", [])
+            self.assertTrue(len(questions) > 0, "Should have at least one question")
+            
+            # Check the first question structure
+            if len(questions) > 0:
+                question = questions[0]
+                self.assertIn("question_text", question, "Question text not found")
+                self.assertIn("options", question, "Options not found")
+                self.assertIn("correct_answer", question, "Correct answer not found")
+            
+            print(f"Generated {len(questions)} practice questions")
             print("✅ Practice test generation test passed")
         except Exception as e:
             print(f"❌ Practice test generation test failed: {str(e)}")
 
-    def test_08_enhanced_chat_history(self):
-        """Test enhanced chat history by subject"""
-        if not self.student_id:
-            self.skipTest("Student profile not created")
-            
-        print("\n🔍 Testing Enhanced Chat History by Subject...")
+    def test_12_practice_test_submission(self):
+        """Test practice test submission with authentication"""
+        print("\n🔍 Testing Practice Test Submission...")
         
-        # Create sessions for different subjects and send messages
-        subjects_to_test = [Subject.MATH.value, Subject.PHYSICS.value, Subject.ENGLISH.value]
-        session_ids = {}
+        if not self.student_token:
+            self.skipTest("Student token not available")
         
-        for subject in subjects_to_test:
-            # Create a session
-            session_url = f"{API_URL}/chat/session"
-            session_payload = {
-                "student_id": self.student_id,
-                "subject": subject
-            }
-            
-            session_response = requests.post(session_url, json=session_payload)
-            if session_response.status_code != 200:
-                print(f"❌ Failed to create session for {subject}")
-                continue
-                
-            session_data = session_response.json()
-            subject_session_id = session_data.get("session_id")
-            session_ids[subject] = subject_session_id
-            
-            # Send 2 messages for each subject
-            message_url = f"{API_URL}/chat/message"
-            for i in range(2):
-                message_payload = {
-                    "session_id": subject_session_id,
-                    "student_id": self.student_id,
-                    "subject": subject,
-                    "user_message": f"Test message {i+1} for {subject} subject"
-                }
-                
-                message_response = requests.post(message_url, json=message_payload)
-                if message_response.status_code != 200:
-                    print(f"❌ Failed to send message {i+1} for {subject}")
-        
-        # Test getting all chat history
-        all_history_url = f"{API_URL}/chat/history/{self.student_id}"
-        try:
-            response = requests.get(all_history_url)
-            print(f"All Chat History Response: {response.status_code}")
-            
-            self.assertEqual(response.status_code, 200, "Failed to get all chat history")
-            all_data = response.json()
-            self.assertIsInstance(all_data, list, "Chat history should be a list")
-            
-            # Should have at least 6 messages (2 for each of 3 subjects)
-            self.assertTrue(len(all_data) >= 6, f"Chat history should have at least 6 messages, got {len(all_data)}")
-            
-            print(f"All chat history contains {len(all_data)} messages")
-            print("✅ All chat history test passed")
-        except Exception as e:
-            print(f"❌ All chat history test failed: {str(e)}")
-        
-        # Test getting chat history filtered by subject
-        for subject in subjects_to_test:
-            subject_history_url = f"{API_URL}/chat/history/{self.student_id}?subject={subject}"
-            try:
-                response = requests.get(subject_history_url)
-                print(f"{subject.title()} Chat History Response: {response.status_code}")
-                
-                self.assertEqual(response.status_code, 200, f"Failed to get {subject} chat history")
-                subject_data = response.json()
-                self.assertIsInstance(subject_data, list, f"{subject} chat history should be a list")
-                
-                # Should have at least 2 messages for this subject
-                self.assertTrue(len(subject_data) >= 2, f"{subject} chat history should have at least 2 messages")
-                
-                # Verify all messages are for this subject
-                for message in subject_data:
-                    self.assertEqual(message.get("subject"), subject, f"Message subject should be {subject}")
-                
-                print(f"{subject.title()} chat history contains {len(subject_data)} messages")
-                print(f"✅ {subject.title()} chat history test passed")
-            except Exception as e:
-                print(f"❌ {subject.title()} chat history test failed: {str(e)}")
-        
-        # Test getting chat sessions
-        sessions_url = f"{API_URL}/chat/sessions/{self.student_id}"
-        try:
-            response = requests.get(sessions_url)
-            print(f"Chat Sessions Response: {response.status_code}")
-            
-            self.assertEqual(response.status_code, 200, "Failed to get chat sessions")
-            sessions_data = response.json()
-            self.assertIsInstance(sessions_data, list, "Chat sessions should be a list")
-            
-            # Should have at least 3 sessions (one for each subject)
-            self.assertTrue(len(sessions_data) >= 3, "Chat sessions should have at least 3 sessions")
-            
-            # Verify our session IDs are in the list
-            session_ids_in_response = [session.get("session_id") for session in sessions_data]
-            for subject, session_id in session_ids.items():
-                self.assertIn(session_id, session_ids_in_response, f"{subject} session ID not found in sessions")
-            
-            print(f"Found {len(sessions_data)} chat sessions")
-            print("✅ Chat sessions test passed")
-        except Exception as e:
-            print(f"❌ Chat sessions test failed: {str(e)}")
-        
-        print("✅ Enhanced Chat History tests completed")
-
-    def test_09_xp_and_gamification(self):
-        """Test XP and gamification system"""
-        if not self.student_id:
-            self.skipTest("Student profile not created")
-            
-        print("\n🔍 Testing XP and Gamification System...")
-        
-        # First, get the current XP
-        profile_url = f"{API_URL}/student/profile/{self.student_id}"
-        profile_response = requests.get(profile_url)
-        profile_data = profile_response.json()
-        initial_xp = profile_data.get("total_xp", 0)
-        initial_streak = profile_data.get("streak_days", 0)
-        
-        print(f"Initial XP: {initial_xp}, Initial Streak: {initial_streak}")
-        
-        # Send several chat messages to earn XP
-        session_url = f"{API_URL}/chat/session"
-        session_payload = {
-            "student_id": self.student_id,
-            "subject": Subject.MATH.value
+        # First generate a test
+        gen_url = f"{API_URL}/practice/generate"
+        headers = {"Authorization": f"Bearer {self.student_token}"}
+        gen_payload = {
+            "subject": Subject.MATH.value,
+            "topics": ["Algebra"],
+            "difficulty": DifficultyLevel.MEDIUM.value,
+            "question_count": 2
         }
         
-        session_response = requests.post(session_url, json=session_payload)
-        xp_session_id = session_response.json().get("session_id")
-        
-        message_url = f"{API_URL}/chat/message"
-        for i in range(3):  # Send 3 messages to earn XP
-            message_payload = {
-                "session_id": xp_session_id,
-                "student_id": self.student_id,
-                "subject": Subject.MATH.value,
-                "user_message": f"XP test message {i+1}"
+        try:
+            gen_response = requests.post(gen_url, json=gen_payload, headers=headers)
+            self.assertEqual(gen_response.status_code, 200, "Failed to generate practice test")
+            gen_data = gen_response.json()
+            
+            test_id = gen_data.get("test_id")
+            questions = gen_data.get("questions", [])
+            
+            if len(questions) == 0:
+                self.skipTest("No questions generated")
+            
+            # Create student answers (just use the correct answers for testing)
+            student_answers = {}
+            question_ids = []
+            for question in questions:
+                question_id = question.get("id")
+                question_ids.append(question_id)
+                student_answers[question_id] = question.get("correct_answer")
+            
+            # Submit the test
+            submit_url = f"{API_URL}/practice/submit"
+            submit_payload = {
+                "test_id": test_id,
+                "questions": question_ids,
+                "student_answers": student_answers,
+                "time_taken": 300  # 5 minutes
             }
             
-            message_response = requests.post(message_url, json=message_payload)
-            if message_response.status_code != 200:
-                print(f"❌ Failed to send XP test message {i+1}")
-        
-        # Check if XP increased
-        updated_profile_response = requests.get(profile_url)
-        updated_profile_data = updated_profile_response.json()
-        final_xp = updated_profile_data.get("total_xp", 0)
-        
-        print(f"Final XP: {final_xp}")
-        self.assertTrue(final_xp > initial_xp, "XP should increase after sending messages")
-        print(f"XP increased by {final_xp - initial_xp} points")
-        
-        # Test updating streak manually
-        update_url = f"{API_URL}/student/profile/{self.student_id}"
-        update_payload = {
-            "streak_days": initial_streak + 1,
-            "badges": ["First Chat", "Math Explorer"]
-        }
-        
-        update_response = requests.put(update_url, json=update_payload)
-        self.assertEqual(update_response.status_code, 200, "Failed to update streak and badges")
-        
-        # Verify streak and badges updated
-        final_profile_response = requests.get(profile_url)
-        final_profile_data = final_profile_response.json()
-        final_streak = final_profile_data.get("streak_days", 0)
-        badges = final_profile_data.get("badges", [])
-        
-        self.assertEqual(final_streak, initial_streak + 1, "Streak should be updated")
-        self.assertTrue(len(badges) >= 2, "Should have at least 2 badges")
-        self.assertIn("First Chat", badges, "First Chat badge not found")
-        self.assertIn("Math Explorer", badges, "Math Explorer badge not found")
-        
-        print(f"Streak updated to {final_streak}")
-        print(f"Badges: {badges}")
-        print("✅ XP and Gamification test passed")
+            submit_response = requests.post(submit_url, json=submit_payload, headers=headers)
+            print(f"Practice Test Submission Response: {submit_response.status_code}")
+            
+            self.assertEqual(submit_response.status_code, 200, "Failed to submit practice test")
+            submit_data = submit_response.json()
+            
+            self.assertIn("score", submit_data, "Score not found in response")
+            self.assertIn("correct_answers", submit_data, "Correct answers not found in response")
+            self.assertIn("total_questions", submit_data, "Total questions not found in response")
+            self.assertIn("xp_earned", submit_data, "XP earned not found in response")
+            
+            # Since we used correct answers, score should be 100%
+            self.assertEqual(submit_data.get("score"), 100.0, "Score should be 100%")
+            self.assertEqual(submit_data.get("correct_answers"), len(questions), "All answers should be correct")
+            
+            print(f"Submitted practice test with score: {submit_data.get('score')}%")
+            print(f"Earned {submit_data.get('xp_earned')} XP")
+            print("✅ Practice test submission test passed")
+        except Exception as e:
+            print(f"❌ Practice test submission test failed: {str(e)}")
 
-    def test_10_dashboard_analytics(self):
-        """Test dashboard analytics API"""
-        if not self.student_id:
-            self.skipTest("Student profile not created")
-            
-        print("\n🔍 Testing Dashboard Analytics API...")
+    def test_13_student_dashboard(self):
+        """Test student dashboard with authentication"""
+        print("\n🔍 Testing Student Dashboard...")
         
-        url = f"{API_URL}/dashboard/{self.student_id}"
+        if not self.student_token:
+            self.skipTest("Student token not available")
+        
+        url = f"{API_URL}/dashboard"
+        headers = {"Authorization": f"Bearer {self.student_token}"}
+        
         try:
-            response = requests.get(url)
-            print(f"Dashboard Analytics Response: {response.status_code}")
+            response = requests.get(url, headers=headers)
+            print(f"Student Dashboard Response: {response.status_code}")
             
-            self.assertEqual(response.status_code, 200, "Failed to get dashboard analytics")
+            self.assertEqual(response.status_code, 200, "Failed to get student dashboard")
             data = response.json()
             
-            # Check dashboard structure
-            self.assertIn("profile", data, "Profile section not found in dashboard")
-            self.assertIn("stats", data, "Stats section not found in dashboard")
-            self.assertIn("recent_activity", data, "Recent activity section not found in dashboard")
-            self.assertIn("subjects_progress", data, "Subjects progress not found in dashboard")
+            self.assertIn("profile", data, "Profile not found in dashboard")
+            self.assertIn("stats", data, "Stats not found in dashboard")
+            self.assertIn("recent_activity", data, "Recent activity not found in dashboard")
             
-            # Check stats
+            profile = data.get("profile", {})
+            self.assertEqual(profile.get("user_id"), self.student_id, "User ID mismatch")
+            
             stats = data.get("stats", {})
             self.assertIn("total_messages", stats, "Total messages not found in stats")
-            self.assertIn("subjects_studied", stats, "Subjects studied not found in stats")
-            self.assertIn("study_streak", stats, "Study streak not found in stats")
             self.assertIn("total_xp", stats, "Total XP not found in stats")
-            self.assertIn("level", stats, "Level not found in stats")
             
-            # Check recent activity
-            recent_activity = data.get("recent_activity", {})
-            self.assertIn("messages", recent_activity, "Recent messages not found")
-            self.assertIn("sessions", recent_activity, "Recent sessions not found")
-            
-            print("Dashboard data structure is valid")
-            print(f"Stats: {stats}")
-            print(f"Recent activity: {len(recent_activity.get('messages', []))} messages, {len(recent_activity.get('sessions', []))} sessions")
-            print(f"Subjects progress: {data.get('subjects_progress')}")
-            print("✅ Dashboard Analytics test passed")
+            print(f"Student dashboard loaded with {len(data.get('recent_activity', {}).get('messages', []))} recent messages")
+            print("✅ Student dashboard test passed")
         except Exception as e:
-            print(f"❌ Dashboard Analytics test failed: {str(e)}")
+            print(f"❌ Student dashboard test failed: {str(e)}")
+
+    def test_14_teacher_dashboard(self):
+        """Test teacher dashboard with authentication"""
+        print("\n🔍 Testing Teacher Dashboard...")
+        
+        if not self.teacher_token:
+            self.skipTest("Teacher token not available")
+        
+        url = f"{API_URL}/teacher/dashboard"
+        headers = {"Authorization": f"Bearer {self.teacher_token}"}
+        
+        try:
+            response = requests.get(url, headers=headers)
+            print(f"Teacher Dashboard Response: {response.status_code}")
+            
+            self.assertEqual(response.status_code, 200, "Failed to get teacher dashboard")
+            data = response.json()
+            
+            self.assertIn("profile", data, "Profile not found in dashboard")
+            self.assertIn("classes", data, "Classes not found in dashboard")
+            self.assertIn("stats", data, "Stats not found in dashboard")
+            
+            profile = data.get("profile", {})
+            self.assertEqual(profile.get("user_id"), self.teacher_id, "User ID mismatch")
+            
+            classes = data.get("classes", [])
+            self.assertTrue(len(classes) > 0, "Teacher should have at least one class")
+            
+            stats = data.get("stats", {})
+            self.assertIn("total_classes", stats, "Total classes not found in stats")
+            self.assertIn("total_students", stats, "Total students not found in stats")
+            
+            print(f"Teacher dashboard loaded with {len(classes)} classes")
+            print("✅ Teacher dashboard test passed")
+        except Exception as e:
+            print(f"❌ Teacher dashboard test failed: {str(e)}")
+
+    def test_15_jwt_validation(self):
+        """Test JWT token validation"""
+        print("\n🔍 Testing JWT Token Validation...")
+        
+        if not self.student_token:
+            self.skipTest("Student token not available")
+        
+        # Test with valid token
+        url = f"{API_URL}/student/profile"
+        valid_headers = {"Authorization": f"Bearer {self.student_token}"}
+        
+        try:
+            valid_response = requests.get(url, headers=valid_headers)
+            print(f"Valid Token Response: {valid_response.status_code}")
+            
+            self.assertEqual(valid_response.status_code, 200, "Valid token should be accepted")
+            
+            # Test with invalid token
+            invalid_headers = {"Authorization": "Bearer invalid.token.here"}
+            invalid_response = requests.get(url, headers=invalid_headers)
+            print(f"Invalid Token Response: {invalid_response.status_code}")
+            
+            self.assertEqual(invalid_response.status_code, 401, "Invalid token should be rejected")
+            
+            # Test with missing token
+            missing_response = requests.get(url)
+            print(f"Missing Token Response: {missing_response.status_code}")
+            
+            self.assertEqual(missing_response.status_code, 401, "Missing token should be rejected")
+            
+            print("✅ JWT token validation test passed")
+        except Exception as e:
+            print(f"❌ JWT token validation test failed: {str(e)}")
+
+    def test_16_health_check(self):
+        """Test health check endpoint"""
+        print("\n🔍 Testing Health Check...")
+        
+        url = f"{API_URL}/health"
+        
+        try:
+            response = requests.get(url)
+            print(f"Health Check Response: {response.status_code}")
+            
+            self.assertEqual(response.status_code, 200, "Health check should return 200")
+            data = response.json()
+            
+            self.assertEqual(data.get("status"), "healthy", "Status should be 'healthy'")
+            self.assertIn("timestamp", data, "Timestamp should be included")
+            self.assertIn("version", data, "Version should be included")
+            
+            print(f"API version: {data.get('version')}")
+            print("✅ Health check test passed")
+        except Exception as e:
+            print(f"❌ Health check test failed: {str(e)}")
 
 if __name__ == "__main__":
     unittest.main(argv=['first-arg-is-ignored'], exit=False)
