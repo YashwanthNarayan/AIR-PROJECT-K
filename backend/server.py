@@ -8,6 +8,8 @@ import logging
 import asyncio
 import jwt
 import bcrypt
+import random
+import string
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
@@ -72,6 +74,20 @@ class AssignmentType(str, Enum):
     STUDY_TOPIC = "study_topic"
     CUSTOM = "custom"
 
+class NotificationType(str, Enum):
+    TEACHER_MESSAGE = "teacher_message"
+    ASSIGNMENT = "assignment"
+    DAILY_PRACTICE = "daily_practice"
+    ACHIEVEMENT = "achievement"
+    REMINDER = "reminder"
+
+class CalendarEventType(str, Enum):
+    STUDY_SESSION = "study_session"
+    PRACTICE_TEST = "practice_test"
+    ASSIGNMENT_DUE = "assignment_due"
+    CLASS = "class"
+    EXAM = "exam"
+
 # Authentication Models
 class UserLogin(BaseModel):
     email: EmailStr
@@ -97,7 +113,7 @@ class StudentRegistration(BaseModel):
     study_hours_per_day: int = 2
     preferred_study_time: str = "evening"
 
-# V3 Teacher Models
+# Enhanced Models with new features
 class Classroom(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     class_id: str
@@ -105,16 +121,50 @@ class Classroom(BaseModel):
     name: str
     subject: Subject
     grade_level: GradeLevel
-    students: List[str] = []  # List of student IDs
+    join_code: str  # Unique 6-digit code for students to join
+    students: List[str] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)
     is_active: bool = True
+    description: Optional[str] = None
+
+class Notification(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    notification_id: str
+    recipient_id: str  # student_id
+    sender_id: Optional[str] = None  # teacher_id (None for system notifications)
+    title: str
+    message: str
+    notification_type: NotificationType
+    related_id: Optional[str] = None  # assignment_id, class_id, etc.
+    is_read: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class CalendarEvent(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    event_id: str
+    student_id: str
+    title: str
+    description: Optional[str] = None
+    event_type: CalendarEventType
+    subject: Optional[Subject] = None
+    start_time: datetime
+    end_time: datetime
+    is_completed: bool = False
+    reminder_sent: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class PracticeTestSettings(BaseModel):
+    subject: Subject
+    topics: List[str]
+    num_questions: int = Field(ge=5, le=50)  # minimum 5, maximum 50
+    difficulty: str = "mixed"  # easy, medium, hard, mixed
 
 class Assignment(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     assignment_id: str
     teacher_id: str
     class_id: Optional[str] = None
-    student_ids: List[str] = []  # Can assign to specific students
+    student_ids: List[str] = []
     title: str
     description: str
     assignment_type: AssignmentType
@@ -123,29 +173,6 @@ class Assignment(BaseModel):
     due_date: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     is_active: bool = True
-
-class TeacherNote(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    note_id: str
-    teacher_id: str
-    student_id: str
-    subject: Optional[Subject] = None
-    title: str
-    content: str
-    is_private: bool = True  # Only visible to teacher
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-class Alert(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    alert_id: str
-    teacher_id: str
-    student_id: str
-    alert_type: AlertType
-    subject: Optional[Subject] = None
-    title: str
-    description: str
-    is_read: bool = False
-    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Teacher(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -182,6 +209,7 @@ class StudentProfile(BaseModel):
     level: int = 1
     badges: List[str] = []
     assigned_teacher: Optional[str] = None
+    joined_classes: List[str] = []  # List of class_ids
 
 class ChatMessage(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -208,33 +236,36 @@ class ChatSession(BaseModel):
     topics_covered: List[str] = []
     session_summary: str = ""
 
-# V3 Input Models
+# Input Models
 class ClassroomCreate(BaseModel):
     name: str
     subject: Subject
     grade_level: GradeLevel
+    description: Optional[str] = None
 
-class AssignmentCreate(BaseModel):
+class JoinClassRequest(BaseModel):
+    join_code: str
+
+class NotificationCreate(BaseModel):
+    recipient_ids: List[str]  # Can send to multiple students
     title: str
-    description: str
-    assignment_type: AssignmentType
-    subject: Subject
-    topics: List[str] = []
-    class_id: Optional[str] = None
-    student_ids: List[str] = []
-    due_date: Optional[datetime] = None
+    message: str
+    notification_type: NotificationType = NotificationType.TEACHER_MESSAGE
+    related_id: Optional[str] = None
 
-class TeacherNoteCreate(BaseModel):
-    student_id: str
+class CalendarEventCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    event_type: CalendarEventType
     subject: Optional[Subject] = None
-    title: str
-    content: str
-    is_private: bool = True
+    start_time: datetime
+    end_time: datetime
 
-class StudentAssign(BaseModel):
-    student_ids: List[str]
+# Helper functions
+def generate_join_code() -> str:
+    """Generate a unique 6-character join code"""
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
-# Authentication utility functions
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt"""
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -269,124 +300,134 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except jwt.PyJWTError:
         return None
 
-# Helper function to convert MongoDB documents
 def convert_objectid(obj):
     """Convert ObjectId to string for JSON serialization"""
     if isinstance(obj, dict):
         if "_id" in obj:
-            del obj["_id"]  # Remove _id field
+            del obj["_id"]
         return {k: convert_objectid(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [convert_objectid(item) for item in obj]
     else:
         return obj
 
-# AI Analytics for Teacher Insights
-async def analyze_student_performance(student_id: str, teacher_id: str):
-    """Analyze student performance and generate insights"""
+# Enhanced Practice Test Generator
+async def generate_practice_questions(settings: PracticeTestSettings):
+    """Generate customized practice questions based on settings"""
+    api_key = os.environ.get('GEMINI_API_KEY')
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    topics_str = ", ".join(settings.topics)
+    system_prompt = f"""Generate {settings.num_questions} practice questions for {settings.subject.value.title()}.
+
+    Topics to cover: {topics_str}
+    Difficulty: {settings.difficulty}
+    Number of questions: {settings.num_questions}
+    
+    For each question, create a JSON object with:
+    - question_text: The question
+    - question_type: "mcq", "short_answer", or "numerical"
+    - options: Array of 4 options (for MCQ only)
+    - correct_answer: The correct answer
+    - explanation: Detailed explanation of the solution
+    - topic: Which topic this question covers
+    - difficulty: "easy", "medium", or "hard"
+    
+    Return ONLY a valid JSON array with {settings.num_questions} questions.
+    Make questions age-appropriate for middle/high school students.
+    
+    Example format:
+    [
+      {{
+        "question_text": "What is 2 + 2?",
+        "question_type": "mcq",
+        "options": ["3", "4", "5", "6"],
+        "correct_answer": "4",
+        "explanation": "2 + 2 = 4 by basic addition",
+        "topic": "Basic Arithmetic",
+        "difficulty": "easy"
+      }}
+    ]"""
+    
     try:
-        # Get student data
-        student = await db.student_profiles.find_one({"student_id": student_id})
-        if not student:
-            return None
-
-        # Get recent chat messages
-        recent_messages = await db.chat_messages.find({"student_id": student_id}).sort("timestamp", -1).limit(50).to_list(50)
-        
-        # Calculate metrics
-        total_messages = len(recent_messages)
-        subjects_activity = {}
-        
-        for msg in recent_messages:
-            subject = msg.get('subject')
-            if subject:
-                if subject not in subjects_activity:
-                    subjects_activity[subject] = {'count': 0, 'recent_topics': []}
-                subjects_activity[subject]['count'] += 1
-                if msg.get('topic'):
-                    subjects_activity[subject]['recent_topics'].append(msg.get('topic'))
-
-        # Detect struggling areas
-        struggling_subjects = []
-        for subject, activity in subjects_activity.items():
-            if activity['count'] < 5:  # Less than 5 messages in subject
-                struggling_subjects.append(subject)
-
-        # Generate AI insights
-        api_key = os.environ.get('GEMINI_API_KEY')
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        analysis_prompt = f"""
-        Analyze this student's learning data and provide teacher insights:
-        
-        Student: {student.get('name')} (Grade {student.get('grade_level')})
-        Total XP: {student.get('total_xp', 0)}
-        Streak: {student.get('streak_days', 0)} days
-        Total Messages: {total_messages}
-        Subjects Activity: {subjects_activity}
-        
-        Provide a brief analysis covering:
-        1. Learning strengths
-        2. Areas needing attention  
-        3. Engagement level
-        4. Recommended interventions
-        
-        Keep response concise and actionable for teachers.
-        """
-        
-        response = await asyncio.to_thread(model.generate_content, analysis_prompt)
-        
-        return {
-            "student_id": student_id,
-            "student_name": student.get('name'),
-            "grade_level": student.get('grade_level'),
-            "total_xp": student.get('total_xp', 0),
-            "streak_days": student.get('streak_days', 0),
-            "level": student.get('level', 1),
-            "total_messages": total_messages,
-            "subjects_activity": subjects_activity,
-            "struggling_subjects": struggling_subjects,
-            "ai_insights": response.text if response else "Analysis unavailable",
-            "last_active": student.get('last_active'),
-            "recommended_actions": [
-                "Encourage more practice in weak subjects",
-                "Assign targeted practice tests",
-                "Monitor daily engagement"
-            ]
-        }
+        response = await asyncio.to_thread(model.generate_content, system_prompt)
+        return response.text
     except Exception as e:
-        logger.error(f"Error analyzing student performance: {str(e)}")
+        logger.error(f"Error generating practice questions: {str(e)}")
         return None
+
+# Daily notification scheduler
+async def send_daily_practice_reminders():
+    """Send daily practice test reminders to all active students"""
+    try:
+        # Get all students who were active in the last 3 days
+        three_days_ago = datetime.utcnow() - timedelta(days=3)
+        active_students = await db.student_profiles.find({
+            "last_active": {"$gte": three_days_ago}
+        }).to_list(1000)
+        
+        for student in active_students:
+            # Check if already sent today
+            today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            existing_reminder = await db.notifications.find_one({
+                "recipient_id": student['student_id'],
+                "notification_type": NotificationType.DAILY_PRACTICE,
+                "created_at": {"$gte": today_start}
+            })
+            
+            if not existing_reminder:
+                # Get student's most active subject
+                recent_messages = await db.chat_messages.find({
+                    "student_id": student['student_id']
+                }).sort("timestamp", -1).limit(10).to_list(10)
+                
+                most_common_subject = "math"  # default
+                if recent_messages:
+                    subject_counts = {}
+                    for msg in recent_messages:
+                        subject = msg.get('subject')
+                        subject_counts[subject] = subject_counts.get(subject, 0) + 1
+                    most_common_subject = max(subject_counts, key=subject_counts.get)
+                
+                # Create notification
+                notification_id = str(uuid.uuid4())
+                notification = Notification(
+                    notification_id=notification_id,
+                    recipient_id=student['student_id'],
+                    title="Daily Practice Reminder",
+                    message=f"Time for your daily {most_common_subject} practice! Take a quick quiz to reinforce what you learned.",
+                    notification_type=NotificationType.DAILY_PRACTICE,
+                    related_id=most_common_subject
+                )
+                
+                await db.notifications.insert_one(notification.dict())
+                
+    except Exception as e:
+        logger.error(f"Error sending daily reminders: {str(e)}")
 
 # Authentication Routes (existing)
 @api_router.post("/auth/register/student")
 async def register_student(student_data: StudentRegistration):
     """Register a new student"""
     try:
-        # Check if email already exists
         existing_student = await db.student_profiles.find_one({"email": student_data.email})
         if existing_student:
             raise HTTPException(status_code=400, detail="Email already registered")
         
-        # Hash password
         hashed_password = hash_password(student_data.password)
-        
-        # Create student profile
         student_id = str(uuid.uuid4())
         student_dict = student_data.dict()
-        student_dict.pop('password')  # Remove plain password
+        student_dict.pop('password')
         student_dict['student_id'] = student_id
         student_dict['hashed_password'] = hashed_password
         
         student_obj = StudentProfile(**student_dict)
         await db.student_profiles.insert_one(student_obj.dict())
         
-        # Create access token
         access_token = create_access_token(
             data={"sub": student_id, "user_type": UserType.STUDENT}
         )
         
-        # Convert and clean response
         user_response = student_obj.dict()
         user_response.pop('hashed_password', None)
         user_response = convert_objectid(user_response)
@@ -405,30 +446,24 @@ async def register_student(student_data: StudentRegistration):
 async def register_teacher(teacher_data: TeacherRegistration):
     """Register a new teacher"""
     try:
-        # Check if email already exists
         existing_teacher = await db.teachers.find_one({"email": teacher_data.email})
         if existing_teacher:
             raise HTTPException(status_code=400, detail="Email already registered")
         
-        # Hash password
         hashed_password = hash_password(teacher_data.password)
-        
-        # Create teacher profile
         teacher_id = str(uuid.uuid4())
         teacher_dict = teacher_data.dict()
-        teacher_dict.pop('password')  # Remove plain password
+        teacher_dict.pop('password')
         teacher_dict['teacher_id'] = teacher_id
         teacher_dict['hashed_password'] = hashed_password
         
         teacher_obj = Teacher(**teacher_dict)
         await db.teachers.insert_one(teacher_obj.dict())
         
-        # Create access token
         access_token = create_access_token(
             data={"sub": teacher_id, "user_type": UserType.TEACHER}
         )
         
-        # Convert and clean response
         user_response = teacher_obj.dict()
         user_response.pop('hashed_password', None)
         user_response = convert_objectid(user_response)
@@ -451,21 +486,17 @@ async def login(login_data: UserLogin):
             user = await db.student_profiles.find_one({"email": login_data.email})
             if not user or not verify_password(login_data.password, user['hashed_password']):
                 raise HTTPException(status_code=401, detail="Incorrect email or password")
-            
             user_id = user['student_id']
-        else:  # Teacher
+        else:
             user = await db.teachers.find_one({"email": login_data.email})
             if not user or not verify_password(login_data.password, user['hashed_password']):
                 raise HTTPException(status_code=401, detail="Incorrect email or password")
-            
             user_id = user['teacher_id']
         
-        # Create access token
         access_token = create_access_token(
             data={"sub": user_id, "user_type": login_data.user_type}
         )
         
-        # Convert and clean response
         user_response = convert_objectid(user)
         user_response.pop('hashed_password', None)
         
@@ -481,10 +512,43 @@ async def login(login_data: UserLogin):
         logger.error(f"Error in login: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
-# V3 Teacher Routes
+# Enhanced Teacher Routes
+@api_router.post("/teacher/classroom")
+async def create_classroom(classroom_data: ClassroomCreate, current_user = Depends(get_current_user)):
+    """Create a new classroom with unique join code"""
+    if not current_user or current_user["user_type"] != UserType.TEACHER:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    try:
+        # Generate unique join code
+        join_code = generate_join_code()
+        while await db.classrooms.find_one({"join_code": join_code, "is_active": True}):
+            join_code = generate_join_code()
+        
+        class_id = str(uuid.uuid4())
+        classroom_obj = Classroom(
+            class_id=class_id,
+            teacher_id=current_user["user_id"],
+            join_code=join_code,
+            **classroom_data.dict()
+        )
+        
+        await db.classrooms.insert_one(classroom_obj.dict())
+        
+        # Update teacher's classes list
+        await db.teachers.update_one(
+            {"teacher_id": current_user["user_id"]},
+            {"$addToSet": {"classes": class_id}}
+        )
+        
+        return convert_objectid(classroom_obj.dict())
+    except Exception as e:
+        logger.error(f"Error creating classroom: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create classroom")
+
 @api_router.get("/teacher/dashboard")
 async def get_teacher_dashboard(current_user = Depends(get_current_user)):
-    """Get comprehensive teacher dashboard with student analytics"""
+    """Get comprehensive teacher dashboard"""
     if not current_user or current_user["user_type"] != UserType.TEACHER:
         raise HTTPException(status_code=403, detail="Access denied")
     
@@ -497,25 +561,16 @@ async def get_teacher_dashboard(current_user = Depends(get_current_user)):
         # Get teacher's classes
         classes = await db.classrooms.find({"teacher_id": teacher_id, "is_active": True}).to_list(100)
         
-        # Get all students assigned to teacher
+        # Get all students in teacher's classes
         all_student_ids = []
         for classroom in classes:
             all_student_ids.extend(classroom.get('students', []))
-        
-        # Remove duplicates
         all_student_ids = list(set(all_student_ids))
         
         # Get student profiles
         students = await db.student_profiles.find({"student_id": {"$in": all_student_ids}}).to_list(100)
         
-        # Get alerts for teacher
-        alerts = await db.alerts.find({"teacher_id": teacher_id, "is_read": False}).sort("created_at", -1).limit(10).to_list(10)
-        
-        # Calculate teacher stats
-        total_students = len(students)
-        total_classes = len(classes)
-        
-        # Get recent student activity
+        # Get recent activity
         recent_activity = []
         if all_student_ids:
             recent_messages = await db.chat_messages.find(
@@ -538,183 +593,225 @@ async def get_teacher_dashboard(current_user = Depends(get_current_user)):
         return {
             "teacher": teacher_response,
             "stats": {
-                "total_students": total_students,
-                "total_classes": total_classes,
-                "active_alerts": len(alerts),
+                "total_students": len(students),
+                "total_classes": len(classes),
                 "subjects_taught": teacher.get('subjects_taught', [])
             },
             "classes": [convert_objectid(cls) for cls in classes],
             "students": [convert_objectid(student) for student in students],
-            "alerts": [convert_objectid(alert) for alert in alerts],
             "recent_activity": recent_activity
         }
     except Exception as e:
         logger.error(f"Error getting teacher dashboard: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get teacher dashboard")
 
-@api_router.post("/teacher/classroom")
-async def create_classroom(classroom_data: ClassroomCreate, current_user = Depends(get_current_user)):
-    """Create a new classroom"""
+@api_router.post("/teacher/notification")
+async def send_notification(notification_data: NotificationCreate, current_user = Depends(get_current_user)):
+    """Send notification to students"""
     if not current_user or current_user["user_type"] != UserType.TEACHER:
         raise HTTPException(status_code=403, detail="Access denied")
     
     try:
-        class_id = str(uuid.uuid4())
-        classroom_obj = Classroom(
-            class_id=class_id,
-            teacher_id=current_user["user_id"],
-            **classroom_data.dict()
-        )
+        notifications_created = []
+        for recipient_id in notification_data.recipient_ids:
+            notification_id = str(uuid.uuid4())
+            notification = Notification(
+                notification_id=notification_id,
+                recipient_id=recipient_id,
+                sender_id=current_user["user_id"],
+                **notification_data.dict(exclude={'recipient_ids'})
+            )
+            await db.notifications.insert_one(notification.dict())
+            notifications_created.append(notification_id)
         
-        await db.classrooms.insert_one(classroom_obj.dict())
-        
-        # Update teacher's classes list
-        await db.teachers.update_one(
-            {"teacher_id": current_user["user_id"]},
-            {"$addToSet": {"classes": class_id}}
-        )
-        
-        return convert_objectid(classroom_obj.dict())
+        return {
+            "message": f"Sent notification to {len(notification_data.recipient_ids)} students",
+            "notification_ids": notifications_created
+        }
     except Exception as e:
-        logger.error(f"Error creating classroom: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create classroom")
+        logger.error(f"Error sending notification: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to send notification")
 
-@api_router.post("/teacher/classroom/{class_id}/students")
-async def assign_students_to_class(class_id: str, student_data: StudentAssign, current_user = Depends(get_current_user)):
-    """Assign students to a classroom"""
-    if not current_user or current_user["user_type"] != UserType.TEACHER:
+# Enhanced Student Routes
+@api_router.post("/student/join-class")
+async def join_class(join_request: JoinClassRequest, current_user = Depends(get_current_user)):
+    """Join a class using join code"""
+    if not current_user or current_user["user_type"] != UserType.STUDENT:
         raise HTTPException(status_code=403, detail="Access denied")
     
     try:
-        # Verify classroom belongs to teacher
-        classroom = await db.classrooms.find_one({"class_id": class_id, "teacher_id": current_user["user_id"]})
-        if not classroom:
-            raise HTTPException(status_code=404, detail="Classroom not found")
+        # Find classroom by join code
+        classroom = await db.classrooms.find_one({
+            "join_code": join_request.join_code.upper(),
+            "is_active": True
+        })
         
-        # Update classroom with new students
+        if not classroom:
+            raise HTTPException(status_code=404, detail="Invalid join code")
+        
+        student_id = current_user["user_id"]
+        
+        # Check if already joined
+        if student_id in classroom.get('students', []):
+            raise HTTPException(status_code=400, detail="Already joined this class")
+        
+        # Add student to classroom
         await db.classrooms.update_one(
-            {"class_id": class_id},
-            {"$addToSet": {"students": {"$each": student_data.student_ids}}}
+            {"class_id": classroom['class_id']},
+            {"$addToSet": {"students": student_id}}
         )
         
-        # Update students with assigned teacher
-        await db.student_profiles.update_many(
-            {"student_id": {"$in": student_data.student_ids}},
-            {"$set": {"assigned_teacher": current_user["user_id"]}}
+        # Update student's joined classes
+        await db.student_profiles.update_one(
+            {"student_id": student_id},
+            {"$addToSet": {"joined_classes": classroom['class_id']}}
         )
         
         # Update teacher's students list
         await db.teachers.update_one(
-            {"teacher_id": current_user["user_id"]},
-            {"$addToSet": {"students": {"$each": student_data.student_ids}}}
+            {"teacher_id": classroom['teacher_id']},
+            {"$addToSet": {"students": student_id}}
         )
         
-        return {"message": f"Assigned {len(student_data.student_ids)} students to classroom"}
+        return {
+            "message": f"Successfully joined {classroom['name']}",
+            "class": convert_objectid(classroom)
+        }
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error assigning students: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to assign students")
+        logger.error(f"Error joining class: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to join class")
 
-@api_router.get("/teacher/student/{student_id}/analytics")
-async def get_student_analytics(student_id: str, current_user = Depends(get_current_user)):
-    """Get detailed analytics for a specific student"""
-    if not current_user or current_user["user_type"] != UserType.TEACHER:
+@api_router.get("/student/notifications")
+async def get_student_notifications(current_user = Depends(get_current_user)):
+    """Get notifications for current student"""
+    if not current_user or current_user["user_type"] != UserType.STUDENT:
         raise HTTPException(status_code=403, detail="Access denied")
     
     try:
-        # Verify student is assigned to teacher
-        teacher = await db.teachers.find_one({"teacher_id": current_user["user_id"]})
-        if not teacher or student_id not in teacher.get('students', []):
-            raise HTTPException(status_code=403, detail="Student not assigned to you")
+        notifications = await db.notifications.find({
+            "recipient_id": current_user["user_id"]
+        }).sort("created_at", -1).limit(50).to_list(50)
         
-        analytics = await analyze_student_performance(student_id, current_user["user_id"])
-        if not analytics:
+        return [convert_objectid(notification) for notification in notifications]
+    except Exception as e:
+        logger.error(f"Error getting notifications: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get notifications")
+
+@api_router.put("/student/notification/{notification_id}/read")
+async def mark_notification_read(notification_id: str, current_user = Depends(get_current_user)):
+    """Mark notification as read"""
+    if not current_user or current_user["user_type"] != UserType.STUDENT:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    try:
+        result = await db.notifications.update_one(
+            {
+                "notification_id": notification_id,
+                "recipient_id": current_user["user_id"]
+            },
+            {"$set": {"is_read": True}}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Notification not found")
+        
+        return {"message": "Notification marked as read"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error marking notification as read: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to mark notification as read")
+
+@api_router.post("/student/calendar/event")
+async def create_calendar_event(event_data: CalendarEventCreate, current_user = Depends(get_current_user)):
+    """Create a calendar event for student"""
+    if not current_user or current_user["user_type"] != UserType.STUDENT:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    try:
+        event_id = str(uuid.uuid4())
+        event = CalendarEvent(
+            event_id=event_id,
+            student_id=current_user["user_id"],
+            **event_data.dict()
+        )
+        
+        await db.calendar_events.insert_one(event.dict())
+        return convert_objectid(event.dict())
+    except Exception as e:
+        logger.error(f"Error creating calendar event: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create calendar event")
+
+@api_router.get("/student/calendar")
+async def get_student_calendar(current_user = Depends(get_current_user)):
+    """Get calendar events for student"""
+    if not current_user or current_user["user_type"] != UserType.STUDENT:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    try:
+        # Get events for next 30 days
+        start_date = datetime.utcnow()
+        end_date = start_date + timedelta(days=30)
+        
+        events = await db.calendar_events.find({
+            "student_id": current_user["user_id"],
+            "start_time": {"$gte": start_date, "$lte": end_date}
+        }).sort("start_time", 1).to_list(100)
+        
+        return [convert_objectid(event) for event in events]
+    except Exception as e:
+        logger.error(f"Error getting calendar: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get calendar")
+
+@api_router.post("/practice/generate-custom")
+async def generate_custom_practice_test(settings: PracticeTestSettings, current_user = Depends(get_current_user)):
+    """Generate customized practice test"""
+    if not current_user or current_user["user_type"] != UserType.STUDENT:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    try:
+        questions_text = await generate_practice_questions(settings)
+        if not questions_text:
+            raise HTTPException(status_code=500, detail="Failed to generate questions")
+        
+        return {
+            "questions": questions_text,
+            "settings": settings.dict()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating practice test: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate practice test")
+
+@api_router.get("/student/classes")
+async def get_student_classes(current_user = Depends(get_current_user)):
+    """Get classes that student has joined"""
+    if not current_user or current_user["user_type"] != UserType.STUDENT:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    try:
+        student = await db.student_profiles.find_one({"student_id": current_user["user_id"]})
+        if not student:
             raise HTTPException(status_code=404, detail="Student not found")
         
-        return analytics
-    except Exception as e:
-        logger.error(f"Error getting student analytics: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get student analytics")
-
-@api_router.post("/teacher/assignment")
-async def create_assignment(assignment_data: AssignmentCreate, current_user = Depends(get_current_user)):
-    """Create a new assignment"""
-    if not current_user or current_user["user_type"] != UserType.TEACHER:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    try:
-        assignment_id = str(uuid.uuid4())
-        assignment_obj = Assignment(
-            assignment_id=assignment_id,
-            teacher_id=current_user["user_id"],
-            **assignment_data.dict()
-        )
-        
-        await db.assignments.insert_one(assignment_obj.dict())
-        
-        return convert_objectid(assignment_obj.dict())
-    except Exception as e:
-        logger.error(f"Error creating assignment: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create assignment")
-
-@api_router.post("/teacher/note")
-async def create_teacher_note(note_data: TeacherNoteCreate, current_user = Depends(get_current_user)):
-    """Create a note about a student"""
-    if not current_user or current_user["user_type"] != UserType.TEACHER:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    try:
-        note_id = str(uuid.uuid4())
-        note_obj = TeacherNote(
-            note_id=note_id,
-            teacher_id=current_user["user_id"],
-            **note_data.dict()
-        )
-        
-        await db.teacher_notes.insert_one(note_obj.dict())
-        
-        return convert_objectid(note_obj.dict())
-    except Exception as e:
-        logger.error(f"Error creating note: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create note")
-
-@api_router.get("/teacher/students")
-async def get_teacher_students(current_user = Depends(get_current_user)):
-    """Get all students assigned to teacher with basic info"""
-    if not current_user or current_user["user_type"] != UserType.TEACHER:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    try:
-        teacher = await db.teachers.find_one({"teacher_id": current_user["user_id"]})
-        if not teacher:
-            raise HTTPException(status_code=404, detail="Teacher not found")
-        
-        student_ids = teacher.get('students', [])
-        if not student_ids:
+        joined_classes = student.get('joined_classes', [])
+        if not joined_classes:
             return []
         
-        students = await db.student_profiles.find({"student_id": {"$in": student_ids}}).to_list(100)
+        classes = await db.classrooms.find({
+            "class_id": {"$in": joined_classes},
+            "is_active": True
+        }).to_list(100)
         
-        # Add quick stats for each student
-        student_list = []
-        for student in students:
-            # Get basic stats
-            total_messages = await db.chat_messages.count_documents({"student_id": student['student_id']})
-            last_message = await db.chat_messages.find_one(
-                {"student_id": student['student_id']}, 
-                sort=[("timestamp", -1)]
-            )
-            
-            student_info = convert_objectid(student)
-            student_info.pop('hashed_password', None)
-            student_info['total_messages'] = total_messages
-            student_info['last_activity'] = last_message['timestamp'] if last_message else student.get('last_active')
-            
-            student_list.append(student_info)
-        
-        return student_list
+        return [convert_objectid(cls) for cls in classes]
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error getting teacher students: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get students")
+        logger.error(f"Error getting student classes: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get student classes")
 
 # AI Bot Classes (simplified for performance)
 class SubjectBot:
@@ -749,7 +846,7 @@ subject_bots = {
     Subject.GEOGRAPHY: SubjectBot(Subject.GEOGRAPHY)
 }
 
-# Student Routes (existing functionality maintained)
+# Existing chat and dashboard routes (maintained)
 @api_router.post("/chat/session")
 async def create_chat_session(subject: Subject, current_user = Depends(get_current_user)):
     """Create a new chat session for a subject"""
@@ -776,10 +873,8 @@ async def send_chat_message(session_id: str, user_message: str, subject: Subject
         raise HTTPException(status_code=403, detail="Access denied")
     
     try:
-        # Get student profile for context
         student_profile = await db.student_profiles.find_one({"student_id": current_user["user_id"]})
         
-        # Get bot response
         bot_response = ""
         bot_type = f"{subject.value}_bot"
         
@@ -790,7 +885,6 @@ async def send_chat_message(session_id: str, user_message: str, subject: Subject
         else:
             bot_response = f"I'm here to help you with {subject.value}! What would you like to learn?"
         
-        # Create and save the message
         message_obj = ChatMessage(
             session_id=session_id,
             student_id=current_user["user_id"],
@@ -821,31 +915,11 @@ async def send_chat_message(session_id: str, user_message: str, subject: Subject
                 }
             )
         
-        # Check for alerts (V3 feature)
-        await check_student_alerts(current_user["user_id"], student_profile)
-        
         return convert_objectid(message_obj.dict())
         
     except Exception as e:
         logger.error(f"Error in chat message: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
-
-@api_router.get("/chat/history")
-async def get_chat_history(subject: Optional[Subject] = None, current_user = Depends(get_current_user)):
-    """Get chat history for current student"""
-    if not current_user or current_user["user_type"] != UserType.STUDENT:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    try:
-        query = {"student_id": current_user["user_id"]}
-        if subject:
-            query["subject"] = subject
-            
-        messages = await db.chat_messages.find(query).sort("timestamp", 1).to_list(1000)
-        return [convert_objectid(message) for message in messages]
-    except Exception as e:
-        logger.error(f"Error getting chat history: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get chat history")
 
 @api_router.get("/dashboard")
 async def get_student_dashboard(current_user = Depends(get_current_user)):
@@ -860,20 +934,29 @@ async def get_student_dashboard(current_user = Depends(get_current_user)):
         
         # Get recent activity
         recent_messages = await db.chat_messages.find({"student_id": current_user["user_id"]}).sort("timestamp", -1).limit(10).to_list(10)
-        recent_sessions = await db.chat_sessions.find({"student_id": current_user["user_id"]}).sort("last_active", -1).limit(5).to_list(5)
         
         # Calculate study stats
         total_messages = await db.chat_messages.count_documents({"student_id": current_user["user_id"]})
         subjects_studied = await db.chat_messages.distinct("subject", {"student_id": current_user["user_id"]})
         
-        # Get assignments for student
-        assignments = await db.assignments.find({
-            "$or": [
-                {"student_ids": current_user["user_id"]},
-                {"class_id": {"$in": []}}  # Class assignments handled separately
-            ],
+        # Get notifications (last 10)
+        notifications = await db.notifications.find({
+            "recipient_id": current_user["user_id"]
+        }).sort("created_at", -1).limit(10).to_list(10)
+        
+        # Get joined classes
+        joined_classes = await db.classrooms.find({
+            "class_id": {"$in": profile.get('joined_classes', [])},
             "is_active": True
-        }).sort("created_at", -1).limit(5).to_list(5)
+        }).to_list(100)
+        
+        # Get calendar events for today
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start + timedelta(days=1)
+        today_events = await db.calendar_events.find({
+            "student_id": current_user["user_id"],
+            "start_time": {"$gte": today_start, "$lt": today_end}
+        }).sort("start_time", 1).to_list(10)
         
         profile_response = convert_objectid(profile)
         profile_response.pop('hashed_password', None)
@@ -888,92 +971,25 @@ async def get_student_dashboard(current_user = Depends(get_current_user)):
                 "level": profile.get("level", 1)
             },
             "recent_activity": {
-                "messages": [convert_objectid(msg) for msg in recent_messages],
-                "sessions": [convert_objectid(session) for session in recent_sessions]
+                "messages": [convert_objectid(msg) for msg in recent_messages]
             },
             "subjects_progress": subjects_studied,
-            "assignments": [convert_objectid(assignment) for assignment in assignments]
+            "notifications": [convert_objectid(notification) for notification in notifications],
+            "joined_classes": [convert_objectid(cls) for cls in joined_classes],
+            "today_events": [convert_objectid(event) for event in today_events]
         }
     except Exception as e:
         logger.error(f"Error getting dashboard: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get dashboard")
 
-# Alert system
-async def check_student_alerts(student_id: str, student_profile: dict):
-    """Check if student needs attention and create alerts for teachers"""
-    try:
-        if not student_profile.get('assigned_teacher'):
-            return
-        
-        # Check for low activity
-        recent_messages = await db.chat_messages.find({"student_id": student_id}).sort("timestamp", -1).limit(10).to_list(10)
-        
-        if len(recent_messages) < 3:  # Less than 3 messages recently
-            # Create inactivity alert
-            alert_id = str(uuid.uuid4())
-            alert = Alert(
-                alert_id=alert_id,
-                teacher_id=student_profile['assigned_teacher'],
-                student_id=student_id,
-                alert_type=AlertType.INACTIVE,
-                title="Low Student Activity",
-                description=f"{student_profile['name']} has been less active recently"
-            )
-            
-            # Check if similar alert already exists
-            existing = await db.alerts.find_one({
-                "teacher_id": student_profile['assigned_teacher'],
-                "student_id": student_id,
-                "alert_type": AlertType.INACTIVE,
-                "is_read": False
-            })
-            
-            if not existing:
-                await db.alerts.insert_one(alert.dict())
-                
-    except Exception as e:
-        logger.error(f"Error checking alerts: {str(e)}")
-
-# Search students for teachers
-@api_router.get("/teacher/search/students")
-async def search_students(q: str, current_user = Depends(get_current_user)):
-    """Search for students to add to classes"""
-    if not current_user or current_user["user_type"] != UserType.TEACHER:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    try:
-        # Search students by name or email
-        students = await db.student_profiles.find({
-            "$or": [
-                {"name": {"$regex": q, "$options": "i"}},
-                {"email": {"$regex": q, "$options": "i"}}
-            ]
-        }).limit(20).to_list(20)
-        
-        result = []
-        for student in students:
-            student_info = {
-                "student_id": student['student_id'],
-                "name": student['name'],
-                "email": student['email'],
-                "grade_level": student['grade_level'],
-                "subjects": student.get('subjects', [])
-            }
-            result.append(student_info)
-        
-        return result
-    except Exception as e:
-        logger.error(f"Error searching students: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to search students")
-
 # Health check routes
 @api_router.get("/")
 async def root():
-    return {"message": "Project K - AI Educational Chatbot API v3.0 Complete"}
+    return {"message": "Project K - AI Educational Chatbot API v3.0 Enhanced"}
 
 @api_router.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": datetime.utcnow(), "version": "3.0"}
+    return {"status": "healthy", "timestamp": datetime.utcnow(), "version": "3.0-enhanced"}
 
 # Include the router in the main app
 app.include_router(api_router)
