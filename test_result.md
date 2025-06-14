@@ -288,13 +288,11 @@ metadata:
 
 test_plan:
   current_focus:
-    - "V3 Authentication System"
-    - "Teacher Profile Management (V3 Feature)"
-    - "Authenticated API Endpoints"
-    - "V3 Authentication Portal"
-    - "Student Registration/Login"
-    - "Teacher Registration/Login"
-  stuck_tasks: []
+    - "Practice Test System"
+    - "Teacher Dashboard"
+    - "JWT Validation for Missing Tokens"
+  stuck_tasks:
+    - "Practice Test System"
   test_all: false
   test_priority: "high_first"
 
